@@ -188,6 +188,12 @@
       border:1px solid rgba(255,255,255,.10);
       overflow:hidden;
     }
+    details[open]{
+      max-height: 520px;
+    }
+    details[open] pre{
+      max-height: 380px;
+    }
     summary{
       cursor:pointer;
       padding:12px;
@@ -199,11 +205,13 @@
       margin:0;
       padding:12px;
       overflow:auto;
+      max-height: 240px;
       color:rgba(255,255,255,.82);
       font-size:12px;
       line-height:1.4;
       background: rgba(0,0,0,.25);
       border-top:1px solid rgba(255,255,255,.08);
+      white-space: pre;
     }
     .footer{margin-top: 14px; font-size: 12px; color: var(--muted2); line-height:1.4;}
     .history{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
@@ -390,7 +398,19 @@
     function money(n) {
       if (n === null || n === undefined || Number.isNaN(n)) return "—";
       const v = Number(n);
-      return v.toLocaleString("en-AU", { style:"currency", currency:"AUD" });
+      const isWhole = Math.abs(v % 1) < 1e-9;
+      return new Intl.NumberFormat("en-AU", {
+        style: "currency",
+        currency: "AUD",
+        minimumFractionDigits: isWhole ? 0 : 2,
+        maximumFractionDigits: 2
+      }).format(v);
+    }
+
+    function stripTags(s) {
+      return (s === null || s === undefined) ? "" : String(s).replace(/<[^>]*>/g, "");
+    }
+);
     }
 
     function setLoading(on) {
@@ -503,8 +523,9 @@
         // Prices
         const storeRaw = data?.prices?.store?.raw ?? null;
         const onlineRaw = data?.prices?.online?.raw ?? null;
-        $("storePrice").textContent = data?.prices?.store?.text ?? money(storeRaw);
-        $("onlinePrice").textContent = data?.prices?.online?.text ?? money(onlineRaw);
+        // Prefer numeric prices (avoid rendering HTML like <sup> tags in strings)
+        $("storePrice").textContent = money(storeRaw);
+        $("onlinePrice").textContent = money(onlineRaw);
 
         // Location
         const div = data?.location?.division ? String(data.location.division).replace(/_/g," ") : null;
@@ -520,8 +541,8 @@
         statusPill(data?.stock?.status ?? null);
         $("storeQty").textContent = (data?.stock?.qty !== null && data?.stock?.qty !== undefined) ? String(data.stock.qty) : "—";
         $("storeQtyHint").textContent = [
-          data?.stock?.description ? `availability: ${data.stock.description}` : null,
-          itemLoc ? `itemLocation: ${itemLoc}` : null
+          data?.stock?.description ? `availability: ${stripTags(data.stock.description)}` : null,
+          itemLoc ? `itemLocation: ${stripTags(itemLoc)}` : null
         ].filter(Boolean).join(" • ") || "—";
 
         // Product URL
