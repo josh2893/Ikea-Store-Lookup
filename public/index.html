@@ -71,7 +71,7 @@
       box-shadow: 0 10px 22px rgba(0,0,0,.18);
     }
     .chip b{color:var(--text); font-weight:600}
-    .grid{margin-top:16px; display:grid; grid-template-columns: 1.2fr .8fr; gap:14px;}
+    .grid{margin-top:16px; display:grid; grid-template-columns: 1fr; gap:14px;}
     @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
 
     .panel{
@@ -103,6 +103,7 @@
     @media (max-width: 980px){
       .form{grid-template-columns: 1fr 1fr;}
       .span2{grid-column: span 2;}
+    .spanAll{grid-column: 1 / -1;}
       .form button{grid-column: span 2;}
     }
     label{display:block; font-size:12px; color:var(--muted); margin:0 0 6px;}
@@ -191,10 +192,7 @@
     details[open]{
       max-height: 520px;
     }
-    details[open] pre{
-      max-height: 380px;
-    }
-    summary{
+    details[open]     summary{
       cursor:pointer;
       padding:12px;
       color:var(--muted);
@@ -213,6 +211,7 @@
       border-top:1px solid rgba(255,255,255,.08);
       white-space: pre;
     }
+    details[open] pre{ max-height: 55vh; }
     .footer{margin-top: 14px; font-size: 12px; color: var(--muted2); line-height:1.4;}
     .history{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
     .histBtn{
@@ -262,6 +261,11 @@
             <div class="span2">
               <label for="article">Article number</label>
               <input id="article" placeholder="e.g. 50559793 or 505.597.93" value="40492331" />
+            </div>
+
+            <div class="spanAll">
+              <label for="productUrl">Or paste IKEA product URL (optional)</label>
+              <input id="productUrl" placeholder="e.g. https://www.ikea.com/au/en/p/sunnersta-...-10455151/" />
             </div>
 
             <div>
@@ -346,35 +350,6 @@
         </div>
       </div>
 
-      <div class="panel">
-        <div class="panelHeader">
-          <h2>What you’re seeing</h2>
-        </div>
-        <div class="panelBody">
-          <div class="kpi" style="margin-bottom:10px">
-            <div class="label">Endpoint used by the UI</div>
-            <div class="hint mono" id="apiLink">/api/lookup?article=...</div>
-          </div>
-
-          <div class="kpi" style="margin-bottom:10px">
-            <div class="label">Location mapping</div>
-            <div class="hint">
-              Shows <span class="mono">division</span> + <span class="mono">department</span> + internal location code when provided (e.g. Market Hall → Lighting).
-            </div>
-          </div>
-
-          <div class="kpi">
-            <div class="label">Run it remotely</div>
-            <div class="hint">
-              Put this container behind a reverse proxy (Nginx Proxy Manager / Traefik) or a Cloudflare Tunnel for HTTPS + a nice domain.
-            </div>
-          </div>
-
-          <div class="footer">
-            Default store id is Perth (556). You can change it any time.
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -410,8 +385,20 @@
     function stripTags(s) {
       return (s === null || s === undefined) ? "" : String(s).replace(/<[^>]*>/g, "");
     }
-);
+
+    function titleCase(s) {
+      return (s || "").toString().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
     }
+
+    function extractArticleFromUrl(s) {
+      const str = (s || "").toString().trim();
+      if (!str) return "";
+      // IKEA AU article numbers are 8 digits. We take the *last* 8-digit sequence in the string.
+      const matches = [...str.matchAll(/(\d{8})/g)];
+      if (!matches.length) return "";
+      return matches[matches.length - 1][1];
+    }
+
 
     function setLoading(on) {
       $("loading").style.display = on ? "block" : "none";
@@ -446,14 +433,24 @@
     }
 
     function statusPill(status) {
-      const s = (status || "").toUpperCase();
-      const pill = $("pillStatus");
-      pill.className = "pill";
-      pill.textContent = `Status: ${status || "—"}`;
-      if (s.includes("HIGH")) pill.classList.add("good");
-      else if (s.includes("LOW")) pill.classList.add("warn");
-      else if (s.includes("OUT") || s.includes("NOT")) pill.classList.add("bad");
-    }
+  const pill = $("pillStatus");
+  pill.className = "pill";
+
+  if (!status) {
+    pill.textContent = "Status: —";
+    return;
+  }
+
+  const raw = String(status);
+  const s = raw.toUpperCase();
+  const pretty = titleCase(raw.replace(/_/g, " ").toLowerCase());
+
+  pill.textContent = `Status: ${pretty}`;
+
+  if (s.includes("HIGH")) pill.classList.add("good");
+  else if (s.includes("LOW") || s.includes("MED")) pill.classList.add("warn");
+  else if (s.includes("OUT") || s.includes("NOT") || s.includes("NO_STOCK")) pill.classList.add("bad");
+}
 
     // Recent history
     const HISTORY_KEY = "ikea_lookup_history_v1";
@@ -493,21 +490,28 @@
       const market = $("market").value.trim() || "au";
       const lang = $("lang").value.trim() || "en";
       const store = ($("storeId").value || "556").trim();
-      const articleDigits = normalizeArticle($("article").value);
 
-      if (!articleDigits || articleDigits.length < 6) {
-        setLoading(false);
-        showError("Please enter a valid IKEA article number (digits). Example: 50559793 or 505.597.93");
-        return;
-      }
+const urlVal = (($("productUrl") && $("productUrl").value) || "").trim();
+let articleDigits = normalizeArticle($("article").value);
+
+// Allow lookup by pasting an IKEA product URL (or even pasting a URL into the article field)
+const extracted = extractArticleFromUrl(urlVal || $("article").value);
+if (extracted) {
+  articleDigits = extracted;
+  $("article").value = extracted;
+}
+
+      if (!articleDigits || articleDigits.length !== 8) {
+  setLoading(false);
+  showError("Please enter a valid 8-digit IKEA article number (e.g. 50559793 or 505.597.93), or paste an IKEA product URL.");
+  return;
+}
 
       $("pillArticle").textContent = `Article: ${articleDigits}`;
       $("pillArticle").className = "pill mono";
 
       const apiUrl = `/api/lookup?article=${encodeURIComponent(articleDigits)}&store=${encodeURIComponent(store)}&market=${encodeURIComponent(market)}&lang=${encodeURIComponent(lang)}`;
-      $("apiLink").textContent = apiUrl;
-
-      try {
+            try {
         const res = await fetch(apiUrl, { headers: { "accept":"application/json" }});
         if (!res.ok) {
           const txt = await res.text().catch(()=> "");
@@ -527,23 +531,40 @@
         $("storePrice").textContent = money(storeRaw);
         $("onlinePrice").textContent = money(onlineRaw);
 
-        // Location
-        const div = data?.location?.division ? String(data.location.division).replace(/_/g," ") : null;
-        const dept = data?.location?.department ?? null;
-        const code = data?.location?.code ? `(${data.location.code})` : null;
-        const itemLoc = data?.location?.itemLocationText ?? null;
+        // Location (floor + department + internal code)
+const rawDiv = data?.location?.division ?? null; // e.g. MARKET_HALL / SHOWROOM
+const floor = rawDiv ? titleCase(String(rawDiv).replace(/_/g," ")) : null;
+const dept = data?.location?.department ?? null;
+const code = data?.location?.code ?? null;
 
-        const locText = [div, dept, code].filter(Boolean).join(" • ") || "—";
-        $("pillLocation").textContent = `Location: ${locText}`;
-        $("pillLocation").className = "pill";
+const locParts = [];
+if (floor) locParts.push(`Floor: ${floor}`);
+if (dept) locParts.push(`Dept: ${dept}`);
+if (code) locParts.push(`Code: ${code}`);
+const locText = locParts.length ? locParts.join(" • ") : "—";
+
+$("pillLocation").textContent = `Location: ${locText}`;
+$("pillLocation").className = "pill";
 
         // Stock
-        statusPill(data?.stock?.status ?? null);
-        $("storeQty").textContent = (data?.stock?.qty !== null && data?.stock?.qty !== undefined) ? String(data.stock.qty) : "—";
-        $("storeQtyHint").textContent = [
-          data?.stock?.description ? `availability: ${stripTags(data.stock.description)}` : null,
-          itemLoc ? `itemLocation: ${stripTags(itemLoc)}` : null
-        ].filter(Boolean).join(" • ") || "—";
+statusPill(data?.stock?.status ?? null);
+
+$("storeQty").textContent =
+  (data?.stock?.qty !== null && data?.stock?.qty !== undefined) ? String(data.stock.qty) : "—";
+
+const availText =
+  data?.stock?.descriptionText ??
+  (data?.stock?.description ? stripTags(data.stock.description) : null);
+
+const itemLoc =
+  data?.location?.itemLocationTextText ??
+  data?.location?.itemLocationText ??
+  null;
+
+$("storeQtyHint").textContent = [
+  availText ? `availability: ${availText}` : null,
+  itemLoc ? `itemLocation: ${stripTags(itemLoc)}` : null
+].filter(Boolean).join(" • ") || "—";
 
         // Product URL
         const purl = data?.product?.productUrl ?? null;
@@ -591,6 +612,11 @@
     $("btnLookup").addEventListener("click", lookup);
     $("btnCopyApi").addEventListener("click", copyApiLink);
     $("article").addEventListener("keydown", (e) => { if (e.key === "Enter") lookup(); });
+    $("productUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") lookup(); });
+    $("productUrl").addEventListener("blur", () => {
+      const extracted = extractArticleFromUrl($("productUrl").value);
+      if (extracted) $("article").value = extracted;
+    });
 
     renderHistory();
     lookup();

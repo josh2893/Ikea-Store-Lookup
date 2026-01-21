@@ -51,6 +51,10 @@ async function fetchJson(url) {
   return data;
 }
 
+function stripHtml(input) {
+  return (input ?? "").toString().replace(/<[^>]*>/g, "");
+}
+
 // Serve static UI
 app.use(express.static("public", { maxAge: "5m" }));
 
@@ -121,20 +125,46 @@ app.get("/api/lookup", async (req, res) => {
       scan?.presentationSection?.productCard?.stockInfo?.itemLocation ??
       null;
 
+    const itemLocationTextPlain = itemLocationText ? stripHtml(itemLocationText) : null;
+
     const qtyMax = scan?.buyingDecisionSection?.quantityPicker?.max ?? null;
 
     // Availability status & “There are X in stock…” (plus extract a number)
-    const av0 = Array.isArray(avail) ? avail[0] : null;
-    const avDesc = av0?.status?.description ?? null; // e.g. "There are 145 in stock at Perth"
-    const avStatus = av0?.status?.type ?? null;
+const av0 = Array.isArray(avail) ? avail[0] : null;
 
-    let avQty = null;
-    if (avDesc) {
-      const m = avDesc.match(/(\d[\d,]*)/);
-      if (m) avQty = Number(m[1].replace(/,/g, ""));
-    }
+// Many IKEA payloads include HTML tags in human strings (e.g. <b>145</b>) - keep raw, but also create plain text.
+const avDescRaw =
+  av0?.status?.description ??
+  av0?.status?.text ??
+  av0?.availability?.status?.description ??
+  null;
 
-    const inStoreQty = qtyMax ?? avQty;
+const avDesc = avDescRaw ? stripHtml(avDescRaw) : null;
+
+const avStatusRaw =
+  av0?.status?.type ??
+  av0?.status?.status ??
+  av0?.status?.code ??
+  av0?.availability?.status?.type ??
+  av0?.availability?.status?.status ??
+  null;
+
+// scan-shop also carries a status code in some cases
+const scanStatusRaw =
+  scan?.presentationSection?.productCard?.product?.availability?.[0]?.status ??
+  scan?.presentationSection?.productCard?.product?.availability?.status ??
+  scan?.presentationSection?.productCard?.product?.availabilityStatus ??
+  null;
+
+const stockStatus = avStatusRaw ?? scanStatusRaw ?? null;
+
+let avQty = null;
+if (avDesc) {
+  const m = avDesc.match(/(\d[\d,]*)/);
+  if (m) avQty = Number(m[1].replace(/,/g, ""));
+}
+
+const inStoreQty = qtyMax ?? avQty;
 
     const result = {
       article,
@@ -157,15 +187,17 @@ app.get("/api/lookup", async (req, res) => {
 
       stock: {
         qty: inStoreQty,
-        status: avStatus,
-        description: avDesc
+        status: stockStatus,
+        description: avDescRaw,
+        descriptionText: avDesc
       },
 
       location: {
         division,
         department: deptName,
         code: deptId,
-        itemLocationText
+        itemLocationText,
+        itemLocationTextText: itemLocationTextPlain
       }
     };
 
