@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IKEA AU — Store vs Online Lookup</title>
+  <style>
+    :root{
+      --bg0:#070A12;
+      --bg1:#0B1230;
+      --card:rgba(255,255,255,.07);
+      --stroke:rgba(255,255,255,.12);
+      --text:rgba(255,255,255,.92);
+      --muted:rgba(255,255,255,.68);
+      --muted2:rgba(255,255,255,.50);
+      --good:#32d583;
+      --warn:#fdb022;
+      --bad:#f97066;
+      --accent:#7c3aed;
+      --accent2:#06b6d4;
+      --shadow: 0 20px 60px rgba(0,0,0,.45);
+      --shadow2: 0 12px 28px rgba(0,0,0,.35);
+      --radius: 18px;
+      --radius2: 14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:var(--sans);
+      color:var(--text);
+      background:
+        radial-gradient(1200px 800px at 20% 0%, rgba(124,58,237,.25), transparent 55%),
+        radial-gradient(1000px 700px at 90% 10%, rgba(6,182,212,.20), transparent 50%),
+        radial-gradient(800px 600px at 40% 90%, rgba(16,185,129,.12), transparent 55%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      overflow-x:hidden;
+    }
+    .wrap{max-width:1100px; margin:0 auto; padding:28px 18px 46px;}
+    .hero{
+      position:relative;
+      padding:22px 18px 14px;
+      border-radius: calc(var(--radius) + 6px);
+      background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+      border:1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .hero::before{
+      content:"";
+      position:absolute; inset:-2px;
+      background:
+        radial-gradient(500px 300px at 20% 20%, rgba(124,58,237,.35), transparent 60%),
+        radial-gradient(400px 260px at 80% 10%, rgba(6,182,212,.28), transparent 60%);
+      filter: blur(14px);
+      opacity:.8;
+      pointer-events:none;
+    }
+    .hero > *{position:relative; z-index:1}
+    h1{font-size: clamp(22px, 2.8vw, 34px); margin:0; letter-spacing:-.02em; line-height:1.15;}
+    .sub{margin:8px 0 0; color:var(--muted); max-width: 90ch;}
+    .badgeRow{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px;}
+    .chip{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px; border-radius:999px;
+      background: rgba(255,255,255,.06);
+      border:1px solid var(--stroke);
+      color:var(--muted); font-size:12px;
+      box-shadow: 0 10px 22px rgba(0,0,0,.18);
+    }
+    .chip b{color:var(--text); font-weight:600}
+    .grid{margin-top:16px; display:grid; grid-template-columns: 1.2fr .8fr; gap:14px;}
+    @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+
+    .panel{
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.05));
+      border:1px solid var(--stroke);
+      box-shadow: var(--shadow2);
+      overflow:hidden;
+    }
+    .panelHeader{
+      padding:14px 14px 10px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .panelHeader h2{
+      margin:0;
+      font-size:14px;
+      letter-spacing:.02em;
+      color:var(--muted);
+      font-weight:600;
+      text-transform: uppercase;
+    }
+    .panelBody{padding:14px}
+    .form{
+      display:grid;
+      grid-template-columns: 1.2fr .7fr .6fr .6fr auto;
+      gap:10px; align-items:end;
+    }
+    @media (max-width: 980px){
+      .form{grid-template-columns: 1fr 1fr;}
+      .span2{grid-column: span 2;}
+      .form button{grid-column: span 2;}
+    }
+    label{display:block; font-size:12px; color:var(--muted); margin:0 0 6px;}
+    input, select{
+      width:100%; padding:12px 12px; border-radius: 12px;
+      background: rgba(0,0,0,.18);
+      border:1px solid rgba(255,255,255,.12);
+      color:var(--text);
+      outline:none;
+    }
+    input::placeholder{color:rgba(255,255,255,.35)}
+    input:focus, select:focus{
+      border-color: rgba(124,58,237,.6);
+      box-shadow: 0 0 0 3px rgba(124,58,237,.14);
+    }
+    .btn{
+      cursor:pointer;
+      padding:12px 14px;
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,.14);
+      background: linear-gradient(135deg, rgba(124,58,237,.85), rgba(6,182,212,.75));
+      color:white; font-weight:800; letter-spacing:.01em;
+      box-shadow: 0 18px 45px rgba(124,58,237,.18);
+      min-width: 140px;
+    }
+    .btn:disabled{opacity:.7; cursor:not-allowed}
+    .btn.secondary{background: rgba(255,255,255,.06); color:var(--text); font-weight:600; box-shadow:none;}
+    .loadingBar{height: 3px; width:100%; background: rgba(255,255,255,.06); position:relative; overflow:hidden; display:none;}
+    .loadingBar::after{
+      content:""; position:absolute; left:-30%; top:0; height:100%; width:30%;
+      background: linear-gradient(90deg, transparent, rgba(124,58,237,.8), rgba(6,182,212,.7), transparent);
+      animation: slide 1s linear infinite;
+    }
+    @keyframes slide { to { left: 100%; } }
+
+    .errorBox{
+      padding:12px; border-radius: 14px;
+      border:1px solid rgba(249,112,102,.35);
+      background: rgba(249,112,102,.10);
+      color: rgba(255,255,255,.88);
+      margin-top: 10px;
+      font-size: 13px; line-height: 1.35;
+      display:none;
+    }
+    .product{display:grid; grid-template-columns: 160px 1fr; gap:14px; align-items:start; margin-top:14px;}
+    @media (max-width: 620px){ .product{grid-template-columns:1fr} }
+    .imgBox{
+      border-radius: 16px; overflow:hidden;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.25);
+      aspect-ratio: 1 / 1;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .imgBox img{width:100%; height:100%; object-fit:cover}
+    .meta h3{margin:0 0 8px; font-size:18px; letter-spacing:-.01em; line-height:1.2;}
+    .meta p{margin:0 0 10px; color:var(--muted); line-height:1.4; font-size:13px;}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+    .pill{
+      display:inline-flex; padding:6px 9px; border-radius:999px;
+      font-size:12px; border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+      color:var(--muted);
+      gap:6px; align-items:center;
+    }
+    .pill.good{color:rgba(50,213,131,.95); border-color:rgba(50,213,131,.35); background: rgba(50,213,131,.10)}
+    .pill.warn{color:rgba(253,176,34,.95); border-color:rgba(253,176,34,.35); background: rgba(253,176,34,.10)}
+    .pill.bad{color:rgba(249,112,102,.95); border-color:rgba(249,112,102,.35); background: rgba(249,112,102,.10)}
+    .mono{font-family:var(--mono)}
+    .kpis{display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; margin-top:10px;}
+    .kpi{
+      border-radius: var(--radius2);
+      padding:12px 12px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.10);
+    }
+    .kpi .label{font-size:12px; color:var(--muted); margin-bottom:6px}
+    .kpi .value{font-size:20px; font-weight:900; letter-spacing:-.01em}
+    .kpi .hint{font-size:12px; color:var(--muted2); margin-top:6px; line-height:1.35}
+    details{
+      margin-top:12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      overflow:hidden;
+    }
+    summary{
+      cursor:pointer;
+      padding:12px;
+      color:var(--muted);
+      user-select:none;
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    pre{
+      margin:0;
+      padding:12px;
+      overflow:auto;
+      color:rgba(255,255,255,.82);
+      font-size:12px;
+      line-height:1.4;
+      background: rgba(0,0,0,.25);
+      border-top:1px solid rgba(255,255,255,.08);
+    }
+    .footer{margin-top: 14px; font-size: 12px; color: var(--muted2); line-height:1.4;}
+    .history{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+    .histBtn{
+      cursor:pointer; padding:8px 10px; border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.12);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .histBtn:hover{border-color: rgba(124,58,237,.45); color: rgba(255,255,255,.85)}
+    .toast{
+      display:none; position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+      padding: 10px 12px; border-radius: 999px; border:1px solid rgba(255,255,255,.16);
+      background: rgba(0,0,0,.45); color: rgba(255,255,255,.88);
+      backdrop-filter: blur(10px); box-shadow: var(--shadow2);
+      z-index: 999; font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1>IKEA AU — Store vs Online Lookup</h1>
+      <p class="sub">
+        This runs from your server (Docker) so the browser never talks to IKEA directly — no CORS headaches.
+        Enter an article number and compare <b>online</b> (market) vs <b>in-store</b> (store-specific) pricing, stock, and location.
+      </p>
+      <div class="badgeRow">
+        <div class="chip">Default store: <b>Perth</b> <span class="mono">(556)</span></div>
+        <div class="chip">Market: <b>AU</b> • Lang: <b>en</b></div>
+        <div class="chip">Input accepts: <b>40492331</b> or <b>404.923.31</b></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <div id="loading" class="loadingBar"></div>
+        <div class="panelHeader">
+          <h2>Lookup</h2>
+          <div class="row">
+            <button class="btn secondary" id="btnCopyApi" title="Copy the /api/lookup URL to clipboard">Copy API Link</button>
+          </div>
+        </div>
+
+        <div class="panelBody">
+          <div class="form">
+            <div class="span2">
+              <label for="article">Article number</label>
+              <input id="article" placeholder="e.g. 50559793 or 505.597.93" value="40492331" />
+            </div>
+
+            <div>
+              <label for="storeId">Store ID</label>
+              <input id="storeId" placeholder="556" value="556" />
+            </div>
+
+            <div>
+              <label for="market">Market</label>
+              <select id="market">
+                <option value="au" selected>au</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="lang">Language</label>
+              <select id="lang">
+                <option value="en" selected>en</option>
+              </select>
+            </div>
+
+            <button class="btn" id="btnLookup">Lookup</button>
+          </div>
+
+          <div class="history" id="history"></div>
+          <div class="errorBox" id="err"></div>
+
+          <div class="product">
+            <div class="imgBox" id="imgBox">
+              <span style="color:rgba(255,255,255,.4); font-size:12px;">No image yet</span>
+            </div>
+            <div class="meta">
+              <h3 id="prodTitle">—</h3>
+              <p id="prodDesc">Enter an article number and hit Lookup.</p>
+
+              <div class="row" style="margin:10px 0 8px;">
+                <span class="pill" id="pillStatus">Status: —</span>
+                <span class="pill" id="pillLocation">Location: —</span>
+                <span class="pill mono" id="pillArticle">Article: —</span>
+              </div>
+
+              <div class="kpis">
+                <div class="kpi">
+                  <div class="label">In-store price (incl. GST)</div>
+                  <div class="value" id="storePrice">—</div>
+                  <div class="hint" id="storePriceHint">Source: IKEA scan-shop</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">Online price (incl. GST)</div>
+                  <div class="value" id="onlinePrice">—</div>
+                  <div class="hint" id="onlinePriceHint">Source: IKEA product-details</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">In-store quantity</div>
+                  <div class="value" id="storeQty">—</div>
+                  <div class="hint" id="storeQtyHint">Source: availability + scan-shop max qty</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">Difference (Online − Store)</div>
+                  <div class="value" id="diff">—</div>
+                  <div class="hint" id="diffHint">Calculated when both prices exist</div>
+                </div>
+              </div>
+
+              <div class="row" style="margin-top:12px;">
+                <a id="lnkProduct" class="pill" href="#" target="_blank" rel="noopener" style="display:none;">Open product page</a>
+              </div>
+
+              <details>
+                <summary>
+                  Debug JSON
+                  <span class="mono" style="font-size:12px; color:rgba(255,255,255,.55)">merged response</span>
+                </summary>
+                <pre id="debug">—</pre>
+              </details>
+            </div>
+          </div>
+
+          <div class="footer">
+            Tip: This page calls <span class="mono">/api/lookup</span> on this same server. That endpoint proxies IKEA requests server-side, so it works from any browser.
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panelHeader">
+          <h2>What you’re seeing</h2>
+        </div>
+        <div class="panelBody">
+          <div class="kpi" style="margin-bottom:10px">
+            <div class="label">Endpoint used by the UI</div>
+            <div class="hint mono" id="apiLink">/api/lookup?article=...</div>
+          </div>
+
+          <div class="kpi" style="margin-bottom:10px">
+            <div class="label">Location mapping</div>
+            <div class="hint">
+              Shows <span class="mono">division</span> + <span class="mono">department</span> + internal location code when provided (e.g. Market Hall → Lighting).
+            </div>
+          </div>
+
+          <div class="kpi">
+            <div class="label">Run it remotely</div>
+            <div class="hint">
+              Put this container behind a reverse proxy (Nginx Proxy Manager / Traefik) or a Cloudflare Tunnel for HTTPS + a nice domain.
+            </div>
+          </div>
+
+          <div class="footer">
+            Default store id is Perth (556). You can change it any time.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Copied!</div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function toast(msg="Copied!") {
+      const t = $("toast");
+      t.textContent = msg;
+      t.style.display = "block";
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => (t.style.display="none"), 1200);
+    }
+
+    function normalizeArticle(input) {
+      return (input || "").toString().replace(/\D/g, "");
+    }
+
+    function money(n) {
+      if (n === null || n === undefined || Number.isNaN(n)) return "—";
+      const v = Number(n);
+      return v.toLocaleString("en-AU", { style:"currency", currency:"AUD" });
+    }
+
+    function setLoading(on) {
+      $("loading").style.display = on ? "block" : "none";
+      $("btnLookup").disabled = on;
+    }
+
+    function showError(msg) {
+      const el = $("err");
+      el.textContent = msg;
+      el.style.display = "block";
+    }
+
+    function clearError() {
+      const el = $("err");
+      el.textContent = "";
+      el.style.display = "none";
+    }
+
+    function setImage(url) {
+      const box = $("imgBox");
+      box.innerHTML = "";
+      if (!url) {
+        box.innerHTML = '<span style="color:rgba(255,255,255,.4); font-size:12px;">No image</span>';
+        return;
+      }
+      const img = new Image();
+      img.src = url;
+      img.alt = "Product image";
+      img.loading = "lazy";
+      img.referrerPolicy = "no-referrer";
+      box.appendChild(img);
+    }
+
+    function statusPill(status) {
+      const s = (status || "").toUpperCase();
+      const pill = $("pillStatus");
+      pill.className = "pill";
+      pill.textContent = `Status: ${status || "—"}`;
+      if (s.includes("HIGH")) pill.classList.add("good");
+      else if (s.includes("LOW")) pill.classList.add("warn");
+      else if (s.includes("OUT") || s.includes("NOT")) pill.classList.add("bad");
+    }
+
+    // Recent history
+    const HISTORY_KEY = "ikea_lookup_history_v1";
+    function loadHistory() {
+      try {
+        const arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+        return Array.isArray(arr) ? arr : [];
+      } catch { return []; }
+    }
+    function saveHistory(articleDigits) {
+      const arr = loadHistory().filter(x => x !== articleDigits);
+      arr.unshift(articleDigits);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(0, 10)));
+      renderHistory();
+    }
+    function renderHistory() {
+      const arr = loadHistory();
+      const wrap = $("history");
+      wrap.innerHTML = "";
+      if (!arr.length) return;
+      arr.forEach(a => {
+        const b = document.createElement("button");
+        b.className = "histBtn mono";
+        b.textContent = a;
+        b.addEventListener("click", () => {
+          $("article").value = a;
+          lookup();
+        });
+        wrap.appendChild(b);
+      });
+    }
+
+    async function lookup() {
+      clearError();
+      setLoading(true);
+
+      const market = $("market").value.trim() || "au";
+      const lang = $("lang").value.trim() || "en";
+      const store = ($("storeId").value || "556").trim();
+      const articleDigits = normalizeArticle($("article").value);
+
+      if (!articleDigits || articleDigits.length < 6) {
+        setLoading(false);
+        showError("Please enter a valid IKEA article number (digits). Example: 50559793 or 505.597.93");
+        return;
+      }
+
+      $("pillArticle").textContent = `Article: ${articleDigits}`;
+      $("pillArticle").className = "pill mono";
+
+      const apiUrl = `/api/lookup?article=${encodeURIComponent(articleDigits)}&store=${encodeURIComponent(store)}&market=${encodeURIComponent(market)}&lang=${encodeURIComponent(lang)}`;
+      $("apiLink").textContent = apiUrl;
+
+      try {
+        const res = await fetch(apiUrl, { headers: { "accept":"application/json" }});
+        if (!res.ok) {
+          const txt = await res.text().catch(()=> "");
+          throw new Error(`HTTP ${res.status}: ${txt.slice(0, 300)}`);
+        }
+        const data = await res.json();
+
+        // Product details
+        $("prodTitle").textContent = data?.product?.title ?? "—";
+        $("prodDesc").textContent = data?.product?.description ?? "—";
+        setImage(data?.product?.imageUrl ?? null);
+
+        // Prices
+        const storeRaw = data?.prices?.store?.raw ?? null;
+        const onlineRaw = data?.prices?.online?.raw ?? null;
+        $("storePrice").textContent = data?.prices?.store?.text ?? money(storeRaw);
+        $("onlinePrice").textContent = data?.prices?.online?.text ?? money(onlineRaw);
+
+        // Location
+        const div = data?.location?.division ? String(data.location.division).replace(/_/g," ") : null;
+        const dept = data?.location?.department ?? null;
+        const code = data?.location?.code ? `(${data.location.code})` : null;
+        const itemLoc = data?.location?.itemLocationText ?? null;
+
+        const locText = [div, dept, code].filter(Boolean).join(" • ") || "—";
+        $("pillLocation").textContent = `Location: ${locText}`;
+        $("pillLocation").className = "pill";
+
+        // Stock
+        statusPill(data?.stock?.status ?? null);
+        $("storeQty").textContent = (data?.stock?.qty !== null && data?.stock?.qty !== undefined) ? String(data.stock.qty) : "—";
+        $("storeQtyHint").textContent = [
+          data?.stock?.description ? `availability: ${data.stock.description}` : null,
+          itemLoc ? `itemLocation: ${itemLoc}` : null
+        ].filter(Boolean).join(" • ") || "—";
+
+        // Product URL
+        const purl = data?.product?.productUrl ?? null;
+        if (purl) {
+          $("lnkProduct").href = purl;
+          $("lnkProduct").style.display = "inline-flex";
+        } else {
+          $("lnkProduct").style.display = "none";
+        }
+
+        // Diff
+        if (typeof onlineRaw === "number" && typeof storeRaw === "number") {
+          const d = onlineRaw - storeRaw;
+          $("diff").textContent = money(d);
+          $("diffHint").textContent = `Online ${money(onlineRaw)} − Store ${money(storeRaw)}`;
+        } else {
+          $("diff").textContent = "—";
+          $("diffHint").textContent = "Calculated when both prices exist";
+        }
+
+        $("debug").textContent = JSON.stringify(data, null, 2);
+        saveHistory(articleDigits);
+      } catch (e) {
+        showError(e?.message || String(e));
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    async function copyApiLink() {
+      const market = $("market").value.trim() || "au";
+      const lang = $("lang").value.trim() || "en";
+      const store = ($("storeId").value || "556").trim();
+      const articleDigits = normalizeArticle($("article").value);
+      if (!articleDigits) return toast("Enter article first");
+      const apiUrl = `${location.origin}/api/lookup?article=${articleDigits}&store=${store}&market=${market}&lang=${lang}`;
+      try {
+        await navigator.clipboard.writeText(apiUrl);
+        toast("API link copied");
+      } catch {
+        toast("Clipboard blocked");
+      }
+    }
+
+    $("btnLookup").addEventListener("click", lookup);
+    $("btnCopyApi").addEventListener("click", copyApiLink);
+    $("article").addEventListener("keydown", (e) => { if (e.key === "Enter") lookup(); });
+
+    renderHistory();
+    lookup();
+  </script>
+</body>
+</html>

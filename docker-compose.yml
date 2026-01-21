@@ -1,0 +1,7 @@
+services:
+  ikea-lookup:
+    build: .
+    container_name: ikea-lookup
+    ports:
+      - "8088:8080"
+    restart: unless-stopped
