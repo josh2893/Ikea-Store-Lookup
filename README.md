@@ -21,20 +21,6 @@ docker compose up -d --build
 ## API
 - `GET /api/lookup?article=40492331&store=556&market=au&lang=en`
 
-
-
-## Changedetection.io (in-store only)
-For a very simple, server-rendered page (no JS) that is easy for changedetection.io to scrape:
-
-- `GET /{article}` (digits) e.g. `http://localhost:8088/10455151`
-
-Optional query params:
-- `store` (default `556`)
-- `market` (default `au`)
-- `lang` (default `en`)
-
-This page shows **In Stock**, **Price**, and **Quantity**, and sets the HTML `<title>` to the IKEA item name (title + description).
-
 ## Notes
 - These IKEA endpoints are not an official public API contract and may change.
 - The server includes a small in-memory TTL cache to reduce repeated calls.
