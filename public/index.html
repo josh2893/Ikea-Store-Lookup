@@ -148,6 +148,19 @@
       font-size: 13px; line-height: 1.35;
       display:none;
     }
+
+      .noticeBox {
+        display: none;
+        margin-top: 12px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: rgba(255,255,255,.07);
+        border: 1px solid rgba(255,255,255,.14);
+        color: rgba(255,255,255,.92);
+        font-size: 14px;
+        line-height: 1.35;
+      }
+
     .product{display:grid; grid-template-columns: 160px 1fr; gap:14px; align-items:start; margin-top:14px;}
     @media (max-width: 620px){ .product{grid-template-columns:1fr} }
     .imgBox{
@@ -292,6 +305,7 @@
 
           <div class="history" id="history"></div>
           <div class="errorBox" id="err"></div>
+          <div class="noticeBox" id="notice"></div>
 
           <div class="product">
             <div class="imgBox" id="imgBox">
@@ -417,6 +431,19 @@
       el.style.display = "none";
     }
 
+    function showNotice(msg) {
+      const el = $("notice");
+      el.textContent = msg;
+      el.style.display = "block";
+    }
+
+    function clearNotice() {
+      const el = $("notice");
+      el.textContent = "";
+      el.style.display = "none";
+    }
+
+
     function setImage(url) {
       const box = $("imgBox");
       box.innerHTML = "";
@@ -485,6 +512,7 @@
 
     async function lookup() {
       clearError();
+      clearNotice();
       setLoading(true);
 
       const market = $("market").value.trim() || "au";
@@ -518,6 +546,16 @@ if (extracted) {
           throw new Error(`HTTP ${res.status}: ${txt.slice(0, 300)}`);
         }
         const data = await res.json();
+
+        // Friendly handling when IKEA scan-shop is blocked during end-of-day / store closed
+        if (data?.storeClosed) {
+          clearError();
+      clearNotice();
+          showNotice(data?.storeClosedMessage || ":-(" + " The store is currently closed. In-store price/location may be unavailable.");
+        } else {
+          clearNotice();
+        }
+
 
         // Product details
         $("prodTitle").textContent = data?.product?.title ?? "—";
