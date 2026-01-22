@@ -107,6 +107,57 @@ function stripHtml(input) {
   return (input ?? "").toString().replace(/<[^>]*>/g, "");
 }
 
+function parseNumberLike(s) {
+  if (s === null || s === undefined) return null;
+  const n = Number(String(s).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+function isLikelyYear(n) {
+  return typeof n === "number" && n >= 2000 && n <= 2100;
+}
+
+/**
+ * Try to extract a stock quantity from human text.
+ * Avoids picking up years like 2026 from strings such as "Price valid ... 2026 ...".
+ */
+function extractQtyFromText(text) {
+  if (!text) return null;
+  const t = String(text).replace(/\s+/g, " ").trim();
+
+  const contextual = [
+    /there (?:are|is)\s+(\d[\d,]*)/i,
+    /(\d[\d,]*)\s+(?:in stock|available|left)\b/i,
+    /in stock[:\s]+(\d[\d,]*)/i,
+    /stock[:\s]+(\d[\d,]*)/i
+  ];
+
+  for (const re of contextual) {
+    const m = t.match(re);
+    if (m) {
+      const n = parseNumberLike(m[1]);
+      if (n !== null && !isLikelyYear(n)) return n;
+    }
+  }
+
+  const nums = [];
+  for (const m of t.matchAll(/\b(\d[\d,]*)\b/g)) {
+    const n = parseNumberLike(m[1]);
+    if (n !== null && !isLikelyYear(n)) nums.push(n);
+  }
+  if (!nums.length) return null;
+  if (nums.length === 1) return nums[0];
+  return null;
+}
+
+
+function numberFixed(n, decimals = 2) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "—";
+  return x.toFixed(decimals);
+}
+
+
 function isStoreClosedScanShop(respInfo) {
   if (!respInfo) return false;
   if (respInfo.ok) return false;
@@ -227,16 +278,13 @@ async function lookupMerged({ article, store, market, lang }) {
 
   const stockStatus = avStatusRaw ?? scanStatusRaw ?? null;
 
-  let avQty = null;
-  if (avDescPlain) {
-    const m = avDescPlain.match(/(\d[\d,]*)/);
-    if (m) avQty = Number(m[1].replace(/,/g, ""));
-  }
+  let avQty = extractQtyFromText(avDescPlain);
 
   // pick a quantity:
-  // - prefer numeric extracted from availability description
-  // - else use scan-shop max qty if present
-  const qty = avQty ?? qtyMax ?? null;
+  // - prefer numeric extracted from availability description (ignoring years)
+  // - else use scan-shop max qty if present (often 0 when out of stock)
+  const statusUpper = String(stockStatus || "").toUpperCase();
+  const qty = statusUpper.includes("OUT") ? 0 : (avQty ?? qtyMax ?? null);
 
   const product = {
     title: scanTitle ?? onlineTitle ?? null,
@@ -349,8 +397,33 @@ app.get("/:article([0-9\\.]+)", async (req, res) => {
       return "—";
     })();
 
-    const priceText = money(data?.prices?.store?.raw);
+    const priceRaw = data?.prices?.store?.raw;
+    const priceText = money(priceRaw);
+    const priceNumber = numberFixed(priceRaw, 2);
+    const priceNumberMeta = priceNumber === "—" ? "" : priceNumber;
     const qtyText = (data?.stock?.qty ?? "—").toString();
+
+    const schemaAvailability =
+      inStockText === "Yes" ? "https://schema.org/InStock" :
+      inStockText === "No" ? "https://schema.org/OutOfStock" :
+      "https://schema.org/Discontinued";
+
+    const productLd = {
+      "@context": "https://schema.org/",
+      "@type": "Product",
+      "name": pageTitle,
+      "sku": article,
+      "image": data?.product?.imageUrl ? [data.product.imageUrl] : undefined,
+      "url": data?.product?.productUrl ?? undefined,
+      "offers": {
+        "@type": "Offer",
+        "priceCurrency": "AUD",
+        "price": Number.isFinite(Number(priceRaw)) ? Number(priceRaw).toFixed(2) : undefined,
+        "availability": schemaAvailability
+      }
+    };
+
+    const productLdJson = JSON.stringify(productLd).replace(/</g, "\\u003c");
 
     // Optional: include location hints
     const divPretty = data?.location?.division ? titleCase(String(data.location.division).replace(/_/g, " ")) : null;
@@ -372,6 +445,10 @@ app.get("/:article([0-9\\.]+)", async (req, res) => {
   <link rel="icon" href="${favicon}" />
   <link rel="shortcut icon" href="${favicon}" />
   <meta name="robots" content="noindex,nofollow" />
+  <meta property="product:price:amount" content="${escapeHtml(priceNumberMeta)}" />
+  <meta property="product:price:currency" content="AUD" />
+  <meta property="product:availability" content="${escapeHtml(schemaAvailability)}" />
+  <script type="application/ld+json">${productLdJson}</script>
   <style>
     :root { color-scheme: dark; }
     body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b1020; color:#fff; }
@@ -405,7 +482,7 @@ app.get("/:article([0-9\\.]+)", async (req, res) => {
       <div class="card">
         <div class="label">Price (in-store)</div>
         <div class="value" id="price">${escapeHtml(priceText)}</div>
-        <div class="meta">Raw: <span id="price_raw">${escapeHtml(String(data?.prices?.store?.raw ?? ""))}</span></div>
+        <div class="meta">Numeric: <span id="price_number">${escapeHtml(priceNumber)}</span> • Raw: <span id="price_raw">${escapeHtml(String(priceRaw ?? ""))}</span></div>
       </div>
 
       <div class="card">
@@ -415,8 +492,8 @@ app.get("/:article([0-9\\.]+)", async (req, res) => {
       </div>
     </div>
 
-    <pre>In Stock: ${inStockText}
-Price: ${priceText}
+    <pre id="cd_pre">In Stock: ${inStockText}
+Price: ${priceNumber}
 Quantity: ${qtyText}</pre>
   </div>
 </body>
