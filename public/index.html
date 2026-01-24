@@ -195,6 +195,79 @@
     .kpi .label{font-size:12px; color:var(--muted); margin-bottom:6px}
     .kpi .value{font-size:20px; font-weight:900; letter-spacing:-.01em}
     .kpi .hint{font-size:12px; color:var(--muted2); margin-top:6px; line-height:1.35}
+
+/* Extra cards (restocks + reason codes) */
+.cardsRow{display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; margin-top:12px;}
+@media (max-width: 620px){ .cardsRow{grid-template-columns:1fr;} }
+.card{
+  border-radius: var(--radius2);
+  padding:12px 12px;
+  background: rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.10);
+}
+.cardTitle{font-size:12px; color:var(--muted); margin-bottom:8px; font-weight:900}
+.cardBody{font-size:13px; color:rgba(255,255,255,.86); line-height:1.35}
+.chipWrap{display:flex; gap:8px; flex-wrap:wrap;}
+.chipBtn{
+  cursor:pointer;
+  display:inline-flex;
+  gap:6px;
+  align-items:center;
+  padding:6px 9px;
+  border-radius:999px;
+  background: rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.86);
+  font-size:12px;
+}
+.chipBtn:hover{border-color: rgba(124,58,237,.45); color: rgba(255,255,255,.92)}
+.muted{color:var(--muted2)}
+.restockLine{margin:4px 0; font-size:13px; line-height:1.35}
+
+/* Modal (reason code help) */
+.modalOverlay{
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.62);
+  display:flex; align-items:center; justify-content:center;
+  padding: 18px;
+  z-index: 999;
+}
+.modalCard{
+  width: min(760px, 100%);
+  border-radius: 18px;
+  background: rgba(17,18,20,.98);
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow: 0 18px 70px rgba(0,0,0,.55);
+  overflow:hidden;
+}
+.modalHeader{
+  display:flex; align-items:flex-start; justify-content:space-between;
+  gap:12px;
+  padding: 14px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.10);
+}
+.modalKicker{font-size:11px; color:var(--muted2); text-transform:uppercase; letter-spacing:.08em}
+.modalTitle{font-size:16px; font-weight:900; letter-spacing:-.01em}
+.modalContent{padding: 14px 14px; max-height: 72vh; overflow:auto;}
+.modalSection{margin-bottom: 14px;}
+.modalSubTitle{font-size:12px; color:var(--muted); font-weight:900; margin-bottom: 6px;}
+.miniTableWrap{overflow:auto; border-radius: 12px; border:1px solid rgba(255,255,255,.10);}
+.miniTable{width:100%; border-collapse:collapse; font-size:12px;}
+.miniTable th, .miniTable td{padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08); vertical-align:top;}
+.miniTable th{background: rgba(255,255,255,.04); color: rgba(255,255,255,.88); text-align:left;}
+.miniPre{
+  margin:0;
+  padding:12px;
+  overflow:auto;
+  max-height: 32vh;
+  color:rgba(255,255,255,.82);
+  font-size:12px;
+  line-height:1.4;
+  background: rgba(0,0,0,.25);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  white-space: pre;
+}
     details{
       margin-top:12px;
       border-radius: 14px;
@@ -343,7 +416,9 @@
 
               <div id="tabResults">
                 <div class="row" style="margin:10px 0 8px;">
-                  <span class="pill" id="pillStatus">Status: —</span>
+                  <span class="pill" id="pillInStoreStatus">In-store Status: —</span>
+                  <span class="pill" id="pillClickCollect">Click &amp; Collect: —</span>
+                  <span class="pill" id="pillHomeDelivery">Home delivery: —</span>
                   <span class="pill" id="pillFloor">Floor: —</span>
                   <span class="pill" id="pillDept">Dept: —</span>
                   <span class="pill" id="pillCode">Code: —</span>
@@ -361,15 +436,10 @@
                   <div class="value" id="onlinePrice">—</div>
                   <div class="hint" id="onlinePriceHint">Source: IKEA product-details</div>
                 </div>
-                <div class="kpi">
-                  <div class="label">Online quantity</div>
-                  <div class="value" id="onlineQty">—</div>
-                  <div class="hint" id="onlineQtyHint">Best‑effort (some items expose a max orderable qty)</div>
-                </div>
-                <div class="kpi">
+<div class="kpi">
                   <div class="label">In-store quantity</div>
                   <div class="value" id="storeQty">—</div>
-                  <div class="hint" id="storeQtyHint">Source: availability + scan-shop max qty</div>
+                  <div class="hint" id="storeQtyHint">Source: Ingka CIA quantity (fallback: scan-shop)</div>
                 </div>
                 <div class="kpi">
                   <div class="label">Difference (Online − Store)</div>
@@ -377,6 +447,19 @@
                   <div class="hint" id="diffHint">Calculated when both prices exist</div>
                 </div>
               </div>
+
+<div class="cardsRow" style="margin-top:12px;">
+  <div class="card" id="restockCard" style="display:none;">
+    <div class="cardTitle">Restock estimate (in‑store)</div>
+    <div class="cardBody" id="restockBody">—</div>
+    <div class="hint" id="restockHint">Source: Ingka CIA restocks (best effort)</div>
+  </div>
+  <div class="card" id="reasonCard" style="display:none;">
+    <div class="cardTitle">Availability reason codes</div>
+    <div class="cardBody" id="reasonBody">—</div>
+    <div class="hint">Click a reason code for an explanation.</div>
+  </div>
+</div>
 
                 <div class="row" style="margin-top:12px; gap:10px; flex-wrap:wrap;">
                   <a id="lnkProduct" class="btn secondary" href="#" target="_blank" rel="noopener" style="display:none;">Open product page</a>
@@ -401,6 +484,37 @@
 
     </div>
   </div>
+
+  
+<div class="modalOverlay" id="reasonModal" style="display:none;">
+  <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="reasonTitle">
+    <div class="modalHeader">
+      <div>
+        <div class="modalKicker">Reason code</div>
+        <div class="modalTitle" id="reasonTitle">—</div>
+      </div>
+      <button class="btn secondary" id="btnReasonClose" type="button" title="Close">Close</button>
+    </div>
+    <div class="modalContent">
+      <div class="modalSection" id="reasonExplain">—</div>
+
+      <div class="modalSection">
+        <div class="modalSubTitle">Known codes</div>
+        <div class="miniTableWrap">
+          <table class="miniTable" id="reasonTable">
+            <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modalSection">
+        <div class="modalSubTitle">Raw response</div>
+        <pre class="miniPre" id="reasonRaw">—</pre>
+      </div>
+    </div>
+  </div>
+</div>
 
   <div class="toast" id="toast">Copied!</div>
 
@@ -494,25 +608,208 @@
       box.appendChild(img);
     }
 
-    function statusPill(status) {
-  const pill = $("pillStatus");
-  pill.className = "pill";
-
+    function setStockPill(el, label, status) {
+  el.className = "pill";
   if (!status) {
-    pill.textContent = "Status: —";
+    el.textContent = `${label}: —`;
     return;
   }
-
   const raw = String(status);
   const s = raw.toUpperCase();
   const pretty = titleCase(raw.replace(/_/g, " ").toLowerCase());
+  el.textContent = `${label}: ${pretty}`;
 
-  pill.textContent = `Status: ${pretty}`;
-
-  if (s.includes("HIGH")) pill.classList.add("good");
-  else if (s.includes("LOW") || s.includes("MED")) pill.classList.add("warn");
-  else if (s.includes("OUT") || s.includes("NOT") || s.includes("NO_STOCK")) pill.classList.add("bad");
+  if (s.includes("HIGH")) el.classList.add("good");
+  else if (s.includes("LOW") || s.includes("MED")) el.classList.add("warn");
+  else if (s.includes("OUT") || s.includes("NOT") || s.includes("NO_STOCK")) el.classList.add("bad");
 }
+
+function setRangePill(el, label, opt) {
+  el.className = "pill";
+  if (!opt) {
+    el.textContent = `${label}: —`;
+    return;
+  }
+
+  if (opt.inRange) {
+    // In range, but we can still show stock signal if returned
+    const s = String(opt.status || "").toUpperCase();
+    if (s.includes("OUT")) {
+      el.textContent = `${label}: Available (Out of stock)`;
+      el.classList.add("bad");
+    } else if (s.includes("LOW") || s.includes("MED")) {
+      el.textContent = `${label}: Available (Low stock)`;
+      el.classList.add("warn");
+    } else {
+      el.textContent = `${label}: Available`;
+      el.classList.add("good");
+    }
+  } else {
+    el.textContent = `${label}: Unavailable`;
+    el.classList.add("bad");
+  }
+}
+
+const REASON_CODE_INFO = {
+  "AFTER_SALES_PERIOD": "End of sales period (generally discontinued).",
+  "NOT_SOLD_TEMP": "Temporarily not sold/ranged for this store or fulfilment method (may return).",
+  "NOT_IN_RANGE": "Not offered via this fulfilment method for this store/region (not a stock issue)."
+};
+
+function buildReasonTable() {
+  const tbody = $("reasonTable").querySelector("tbody");
+  tbody.innerHTML = "";
+  for (const [code, meaning] of Object.entries(REASON_CODE_INFO)) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="mono">${code}</td><td>${meaning}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function openReasonModal(code, raw) {
+  $("reasonTitle").textContent = code ? code : "(no code)";
+  const meaning = code && REASON_CODE_INFO[code] ? REASON_CODE_INFO[code] : null;
+  $("reasonExplain").innerHTML = meaning
+    ? `<b>${meaning}</b><div class="hint" style="margin-top:6px;">If this doesn’t match what you’re seeing, use the raw response below.</div>`
+    : `<b>Unknown reason code.</b><div class="hint" style="margin-top:6px;">This code isn’t in our known table yet. Raw response shown below.</div>`;
+
+  $("reasonRaw").textContent = raw ? JSON.stringify(raw, null, 2) : "—";
+  $("reasonModal").style.display = "flex";
+}
+
+function closeReasonModal() {
+  $("reasonModal").style.display = "none";
+}
+
+function updateReasonCard(cia) {
+  const card = $("reasonCard");
+  const body = $("reasonBody");
+
+  const items = [];
+  const add = (label, opt) => {
+    if (!opt) return;
+    if (opt.inRange) return; // only show when unavailable
+    const code = opt?.reason?.code ?? null;
+    const raw = opt?.reason?.raw ?? opt?.reason ?? null;
+    items.push({ label, code, raw });
+  };
+
+  add("In-store", cia?.cashCarry);
+  add("Click & Collect", cia?.clickCollect);
+  add("Home delivery", cia?.homeDelivery);
+
+  if (!items.length) {
+    card.style.display = "none";
+    body.textContent = "—";
+    return;
+  }
+
+  card.style.display = "block";
+  body.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "chipWrap";
+
+  items.forEach((it) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chipBtn mono";
+    const codeText = it.code ? it.code : "(no code)";
+    b.textContent = `${it.label}: ${codeText}`;
+    b.addEventListener("click", () => openReasonModal(it.code, it.raw));
+    wrap.appendChild(b);
+  });
+
+  body.appendChild(wrap);
+
+  const more = document.createElement("div");
+  more.className = "hint";
+  more.style.marginTop = "8px";
+  more.textContent = "Click a reason code for details + the raw response.";
+  body.appendChild(more);
+}
+
+function updateRestockCard(cashCarry) {
+  const card = $("restockCard");
+  const body = $("restockBody");
+
+  const restocks = cashCarry?.restocks || [];
+  if (!Array.isArray(restocks) || restocks.length === 0) {
+    card.style.display = "none";
+    body.textContent = "—";
+    return;
+  }
+
+  card.style.display = "block";
+  body.innerHTML = "";
+
+  const list = document.createElement("div");
+  list.className = "restockList";
+
+  restocks.forEach((r) => {
+    const line = document.createElement("div");
+    line.className = "restockLine";
+    const d1 = r.earliestDate || "—";
+    const d2 = r.latestDate || "—";
+    const q = (r.quantity !== null && r.quantity !== undefined) ? `${r.quantity} units` : "—";
+    const rel = r.reliability ? `reliability ${r.reliability}` : "";
+    line.innerHTML = `<span class="mono">${d1}</span> → <span class="mono">${d2}</span> <span class="muted">(${q}${rel ? `, ${rel}` : ""})</span>`;
+    list.appendChild(line);
+  });
+
+  body.appendChild(list);
+}
+
+function updateAvailability(data) {
+  const cia = data?.cia || null;
+
+  const pillStore = $("pillInStoreStatus");
+  const pillCC = $("pillClickCollect");
+  const pillHD = $("pillHomeDelivery");
+
+  // Defaults
+  pillStore.className = "pill";
+  pillCC.className = "pill";
+  pillHD.className = "pill";
+  pillStore.textContent = "In-store Status: —";
+  pillCC.textContent = "Click & Collect: —";
+  pillHD.textContent = "Home delivery: —";
+
+  // CIA missing: fallback to legacy in-store status only
+  if (!cia) {
+    if (data?.storeClosed) {
+      pillStore.textContent = "In-store Status: Store closed";
+      pillStore.classList.add("warn");
+    } else {
+      setStockPill(pillStore, "In-store Status", data?.stock?.status ?? null);
+    }
+    $("reasonCard").style.display = "none";
+    $("restockCard").style.display = "none";
+    return;
+  }
+
+  // In-store (cash & carry)
+  if (data?.storeClosed) {
+    pillStore.textContent = "In-store Status: Store closed";
+    pillStore.classList.add("warn");
+  } else if (cia?.cashCarry && cia.cashCarry.inRange === false) {
+    pillStore.textContent = "In-store Status: Unavailable";
+    pillStore.classList.add("bad");
+  } else {
+    // Prefer CIA messageType if present, else fall back to old status
+    setStockPill(pillStore, "In-store Status", cia?.cashCarry?.status ?? data?.stock?.status ?? null);
+  }
+
+  // Other buying options (selected store)
+  setRangePill(pillCC, "Click & Collect", cia?.clickCollect ?? null);
+  setRangePill(pillHD, "Home delivery", cia?.homeDelivery ?? null);
+
+  // Restocks (in-store only)
+  updateRestockCard(cia?.cashCarry ?? null);
+
+  // Reason codes (only when unavailable)
+  updateReasonCard(cia);
+}
+
 
     // Recent history
     const HISTORY_KEY = "ikea_lookup_history_v1";
@@ -714,16 +1011,6 @@
         $("storePrice").textContent = money(storeRaw);
         $("onlinePrice").textContent = money(onlineRaw);
 
-        // Online qty
-        const onlineQty = data?.stock?.onlineQtyMax ?? null;
-        if (onlineQty !== null && onlineQty !== undefined) {
-          $("onlineQty").textContent = String(onlineQty);
-          $("onlineQtyHint").textContent = "Best‑effort (often a max orderable qty)";
-        } else {
-          $("onlineQty").textContent = "—";
-          $("onlineQtyHint").textContent = "Not exposed for this item";
-        }
-
         // Location pills
         const floor = data?.location?.floor ?? null;
         const dept = data?.location?.department ?? null;
@@ -732,10 +1019,11 @@
         $("pillDept").textContent = `Dept: ${dept ?? "—"}`;
         $("pillCode").textContent = `Code: ${code ?? "—"}`;
 
-        // Stock
-        statusPill(data?.stock?.status ?? null);
+        // Availability (in-store + delivery/click&collect)
+        updateAvailability(data);
 
-        $("storeQty").textContent = (data?.stock?.qty !== null && data?.stock?.qty !== undefined) ? String(data.stock.qty) : "—";
+                const storeQtyVal = (data?.cia?.cashCarry?.qty !== null && data?.cia?.cashCarry?.qty !== undefined) ? data.cia.cashCarry.qty : (data?.stock?.qty ?? null);
+        $("storeQty").textContent = (storeQtyVal !== null && storeQtyVal !== undefined) ? String(storeQtyVal) : "—";
 
         const availText = data?.stock?.descriptionText ?? (data?.stock?.description ? stripTags(data.stock.description) : null);
         const itemLoc = data?.location?.itemLocationTextText ?? data?.location?.itemLocationText ?? null;
@@ -817,6 +1105,17 @@
     $("productUrl").addEventListener("blur", () => {
       const extracted = extractArticleFromUrl($("productUrl").value);
       if (extracted) $("article").value = extracted;
+    });
+
+
+    // Reason code modal wiring
+    buildReasonTable();
+    $("btnReasonClose").addEventListener("click", closeReasonModal);
+    $("reasonModal").addEventListener("click", (e) => {
+      if (e.target && e.target.id === "reasonModal") closeReasonModal();
+    });
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && $("reasonModal").style.display !== "none") closeReasonModal();
     });
 
     setTab("results");

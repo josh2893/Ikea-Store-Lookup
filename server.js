@@ -16,6 +16,10 @@ const app = express();
 const PORT = Number(process.env.PORT || 8080);
 const DEFAULT_STORE = String(process.env.DEFAULT_STORE || "556");
 
+// Ingka API client-id used by ikea-availability-checker (can be overridden)
+const INGKA_CLIENT_ID = String(process.env.INGKA_CLIENT_ID || \"da465052-7912-43b2-82fa-9dc39cdccef8\");
+
+
 // ---- Simple in-memory TTL cache (reduces hammering IKEA endpoints) ----
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 60_000); // 60s default
 const cache = new Map(); // key -> { expires, value }
@@ -61,6 +65,31 @@ async function fetchJson(url) {
 
   const data = await res.json();
   cacheSet(url, data);
+  return data;
+}
+
+// ---- Ingka CIA (api.ingka.ikea.com) fetch (requires x-client-id + versioned accept header) ----
+
+async function fetchIngkaJson(url) {
+  const key = `ingka:${url}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const res = await fetch(url, {
+    headers: {
+      "x-client-id": INGKA_CLIENT_ID,
+      "accept": "application/json;version=1",
+      "user-agent": "ikea-lookup/1.0 (+server-side proxy)"
+    }
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status} from ${url}: ${txt.slice(0, 400)}`);
+  }
+
+  const data = await res.json();
+  cacheSet(key, data);
   return data;
 }
 
@@ -114,6 +143,100 @@ async function fetchJsonInfo(url) {
   }
 
   return { ok: false, status, data, text };
+}
+
+// ---- Ingka CIA fetch (requires x-client-id + versioned accept) ----
+async function fetchJsonCia(url) {
+  const key = `cia:${url}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const res = await fetch(url, {
+    headers: {
+      "x-client-id": INGKA_CLIENT_ID,
+      "accept": "application/json;version=1",
+      "user-agent": "ikea-lookup/1.0 (+server-side proxy)"
+    }
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status} from ${url}: ${txt.slice(0, 400)}`);
+  }
+
+  const data = await res.json();
+  cacheSet(key, data);
+  return data;
+}
+
+function pick(obj, path, fallback=null) {
+  try {
+    let cur = obj;
+    for (const k of path) {
+      if (cur == null) return fallback;
+      cur = cur[k];
+    }
+    return cur == null ? fallback : cur;
+  } catch {
+    return fallback;
+  }
+}
+
+function extractCiaOption(opt) {
+  const inRange = !!pick(opt, ["range", "inRange"], false);
+  const reasonRaw = pick(opt, ["range", "reason"], null);
+  const reasonCode = reasonRaw ? (reasonRaw.code ?? null) : null;
+
+  const status = pick(opt, ["availability", "probability", "thisDay", "messageType"], null);
+  const qty = pick(opt, ["availability", "quantity"], null);
+
+  const restocksRaw = pick(opt, ["availability", "restocks"], []);
+  const restocks = Array.isArray(restocksRaw)
+    ? restocksRaw.map(r => ({
+        earliestDate: r?.earliestDate ?? null,
+        latestDate: r?.latestDate ?? null,
+        quantity: r?.quantity ?? null,
+        reliability: r?.reliability ?? null,
+        type: r?.type ?? null,
+        updateDateTime: r?.updateDateTime ?? null
+      }))
+    : [];
+
+  return {
+    inRange,
+    status,
+    qty,
+    reason: (reasonRaw || reasonCode) ? { code: reasonCode, raw: reasonRaw } : null,
+    restocks
+  };
+}
+
+function parseCiaForSelectedStore(cia, { itemNo, storeCode }) {
+  const av = Array.isArray(cia?.availabilities) ? cia.availabilities : [];
+  const storeEntry = av.find(a =>
+    String(a?.itemKey?.itemNo ?? "") === String(itemNo) &&
+    String(a?.classUnitKey?.classUnitType ?? "") === "STO" &&
+    String(a?.classUnitKey?.classUnitCode ?? "") === String(storeCode)
+  );
+
+  if (!storeEntry) return null;
+
+  return {
+    store: {
+      id: String(storeCode),
+      name: storeEntry?.classUnitKey?.classUnitName ?? null
+    },
+    itemNo: String(itemNo),
+    cashCarry: extractCiaOption(storeEntry?.buyingOption?.cashCarry),
+    clickCollect: extractCiaOption(storeEntry?.buyingOption?.clickCollect),
+    homeDelivery: extractCiaOption(storeEntry?.buyingOption?.homeDelivery),
+    eligibleForStockNotification: storeEntry?.eligibleForStockNotification ?? null
+  };
+}
+
+async function fetchCiaAvailabilities({ itemNo, countryCode="au", unitType="ru" }) {
+  const url = `https://api.ingka.ikea.com/cia/availabilities/${unitType}/${countryCode}?itemNos=${encodeURIComponent(itemNo)}&expand=StoresList,Restocks`;
+  return await fetchJsonCia(url);
 }
 
 // ---- Text fetch (HTML) ----
@@ -296,18 +419,140 @@ function titleCase(s) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-async function lookupMerged({ article, store, market, lang }) {
-  const urls = {
-    productDetails: `https://shop.api.ingka.ikea.com/range/v6/${market}/${lang}/browse/product-details/${article}`,
-    scanShop: `https://shop.api.ingka.ikea.com/scan-shop/v6/${market}/${lang}/stores/${store}/product/${article}/1`,
-    availability: `https://shop.api.ingka.ikea.com/range/v6/${market}/${lang}/browse/availability/product/${article}?storeIds=${store}`
-  };
+// ---- CIA helpers (api.ingka.ikea.com) ----
+function pickPrimaryRestock(restocks) {
+  if (!Array.isArray(restocks) || !restocks.length) return null;
+  const sorted = [...restocks].sort((a, b) => {
+    const ae = String(a?.earliestDate || "");
+    const be = String(b?.earliestDate || "");
+    if (ae !== be) return ae.localeCompare(be);
+    const al = String(a?.latestDate || "");
+    const bl = String(b?.latestDate || "");
+    return al.localeCompare(bl);
+  });
+  return sorted[0] || null;
+}
 
-  const [details, scanInfo, avail] = await Promise.all([
-    fetchJson(urls.productDetails),
-    fetchJsonInfo(urls.scanShop),
-    fetchJson(urls.availability)
-  ]);
+function normCiaOption(opt) {
+  const inRange = opt?.range?.inRange ?? null;
+  const reason = opt?.range?.reason ?? null;
+  const messageType = opt?.availability?.probability?.thisDay?.messageType ?? null;
+  const quantity = opt?.availability?.quantity ?? null;
+  const restocks = Array.isArray(opt?.availability?.restocks) ? opt.availability.restocks : [];
+
+  return {
+    inRange,
+    messageType,
+    quantity,
+    restocks,
+    primaryRestock: pickPrimaryRestock(restocks),
+    reason: reason
+      ? { code: reason?.code ?? null, name: reason?.name ?? null, raw: reason }
+      : null,
+    rangeRaw: opt?.range ?? null
+  };
+}
+
+function summarizeCia(ciaData, { store, article }) {
+  const list = Array.isArray(ciaData?.availabilities) ? ciaData.availabilities : [];
+
+  const storeEntry =
+    list.find((a) =>
+      String(a?.itemKey?.itemNo) === String(article) &&
+      String(a?.classUnitKey?.classUnitType) === "STO" &&
+      String(a?.classUnitKey?.classUnitCode) === String(store)
+    ) || null;
+
+  const ruEntry =
+    list.find((a) =>
+      String(a?.itemKey?.itemNo) === String(article) &&
+      String(a?.classUnitKey?.classUnitType) === "RU" &&
+      String(a?.classUnitKey?.classUnitCode) === "AU"
+    ) || null;
+
+  const storeBuying = storeEntry?.buyingOption ?? null;
+  const ruBuying = ruEntry?.buyingOption ?? null;
+
+  const storeNorm = storeBuying
+    ? {
+        cashCarry: normCiaOption(storeBuying.cashCarry),
+        clickCollect: normCiaOption(storeBuying.clickCollect),
+        homeDelivery: normCiaOption(storeBuying.homeDelivery)
+      }
+    : null;
+
+  const ruNorm = ruBuying
+    ? {
+        cashCarry: normCiaOption(ruBuying.cashCarry),
+        clickCollect: normCiaOption(ruBuying.clickCollect),
+        homeDelivery: normCiaOption(ruBuying.homeDelivery)
+      }
+    : null;
+
+  function computeDisplay(opt) {
+    const available = opt?.inRange === true;
+    const reasonCode = available ? null : (opt?.reason?.code ?? null);
+    const reasonRaw = available ? null : (opt?.reason?.raw ?? opt?.rangeRaw ?? null);
+    const status = available ? (opt?.messageType ?? null) : "UNAVAILABLE";
+    return {
+      available,
+      status,
+      reasonCode,
+      reasonRaw,
+      quantity: opt?.quantity ?? null,
+      primaryRestock: opt?.primaryRestock ?? null
+    };
+  }
+
+  const computed = storeNorm
+    ? {
+        inStore: computeDisplay(storeNorm.cashCarry),
+        clickCollect: computeDisplay(storeNorm.clickCollect),
+        homeDelivery: computeDisplay(storeNorm.homeDelivery)
+      }
+    : null;
+
+  return {
+    store: storeEntry
+      ? {
+          type: storeEntry?.classUnitKey?.classUnitType ?? "STO",
+          code: storeEntry?.classUnitKey?.classUnitCode ?? String(store),
+          name: storeEntry?.classUnitKey?.classUnitName ?? null,
+          buyingOption: storeNorm
+        }
+      : null,
+    ru: ruEntry
+      ? {
+          type: ruEntry?.classUnitKey?.classUnitType ?? "RU",
+          code: ruEntry?.classUnitKey?.classUnitCode ?? "AU",
+          name: ruEntry?.classUnitKey?.classUnitName ?? "Australia",
+          buyingOption: ruNorm
+        }
+      : null,
+    computed
+  };
+}
+
+async function lookupMerged({ article, store, market, lang }) {
+  
+const urls = {
+  productDetails: `https://shop.api.ingka.ikea.com/range/v6/${market}/${lang}/browse/product-details/${article}`,
+  scanShop: `https://shop.api.ingka.ikea.com/scan-shop/v6/${market}/${lang}/stores/${store}/product/${article}/1`,
+  availability: `https://shop.api.ingka.ikea.com/range/v6/${market}/${lang}/browse/availability/product/${article}?storeIds=${store}`,
+  cia: `https://api.ingka.ikea.com/cia/availabilities/ru/${market}?itemNos=${article}&expand=StoresList,Restocks`
+};
+
+  
+const [details, scanInfo, avail, ciaRes] = await Promise.all([
+  fetchJson(urls.productDetails),
+  fetchJsonInfo(urls.scanShop),
+  fetchJson(urls.availability),
+  fetchIngkaJson(urls.cia)
+    .then((data) => ({ ok: true, data }))
+    .catch((e) => ({ ok: false, error: e?.message || String(e) }))
+]);
+
+const cia = ciaRes?.ok ? summarizeCia(ciaRes.data, { store, article }) : null;
 
   const scan = scanInfo.ok ? scanInfo.data : null;
   const storeClosed = isStoreClosedScanShop(scanInfo);
@@ -320,15 +565,6 @@ async function lookupMerged({ article, store, market, lang }) {
 
   const onlineRaw = details?.product?.pricePackage?.includingVat?.rawPrice ?? null;
   const onlinePretty = details?.product?.pricePackage?.includingVat?.sellingPrice ?? null;
-
-  // Online "quantity" (best-effort): some markets expose a max orderable qty.
-  // Not all IKEA payloads include this; if missing, this will be null.
-  const onlineQtyMax =
-    details?.product?.buyingDecisionSection?.quantityPicker?.max ??
-    details?.product?.buyingDecisionSection?.quantityPicker?.maxQuantity ??
-    details?.product?.quantityPicker?.max ??
-    details?.product?.purchaseOptions?.[0]?.quantityPicker?.max ??
-    null;
 
   // In-store (store-specific; may be unavailable if STORE_CLOSED)
   const storeRaw =
@@ -438,8 +674,7 @@ async function lookupMerged({ article, store, market, lang }) {
     },
     stock: {
       qty,
-      onlineQty: onlineQtyMax,
-      status: stockStatus,
+status: stockStatus,
       description: avDesc,
       descriptionText: avDescPlain
     },
@@ -450,6 +685,12 @@ async function lookupMerged({ article, store, market, lang }) {
       code: locationCode,
       itemLocationText,
       itemLocationTextText: itemLocationTextPlain
+    },
+    cia: {
+      ok: Boolean(ciaRes?.ok),
+      error: ciaRes?.ok ? null : (ciaRes?.error ?? "CIA unavailable"),
+      url: urls.cia,
+      summary: cia
     }
   };
 
@@ -547,6 +788,16 @@ app.get("/api/lookup", async (req, res) => {
     }
 
     const result = await lookupMerged({ article, store, market, lang });
+
+    // CIA availabilities (home delivery / click & collect / restocks / range reason codes)
+    try {
+      const ciaRaw = await fetchCiaAvailabilities({ itemNo: article, countryCode: market, unitType: "ru" });
+      result.cia = parseCiaForSelectedStore(ciaRaw, { itemNo: article, storeCode: store });
+    } catch (e) {
+      result.cia = null;
+      result.ciaError = e?.message || String(e);
+    }
+
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e?.message || String(e) });
