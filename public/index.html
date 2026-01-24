@@ -235,6 +235,25 @@
       font-size: 12px;
     }
     .histBtn:hover{border-color: rgba(124,58,237,.45); color: rgba(255,255,255,.85)}
+
+    /* Tabs (Results / Debug) */
+    .tabs{display:flex; gap:6px; margin-top:10px; align-items:center;}
+    .tab{
+      cursor:pointer;
+      padding:8px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.12);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .tab:hover{border-color: rgba(124,58,237,.45); color: rgba(255,255,255,.85)}
+    .tab.active{
+      background: rgba(124,58,237,.18);
+      border-color: rgba(124,58,237,.55);
+      color: rgba(255,255,255,.92);
+    }
     .toast{
       display:none; position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
       padding: 10px 12px; border-radius: 999px; border:1px solid rgba(255,255,255,.16);
@@ -247,14 +266,15 @@
 <body>
   <div class="wrap">
     <div class="hero">
-      <h1>IKEA AU — Store vs Online Lookup</h1>
+      <h1>Compares store to online</h1>
       <p class="sub">
         This runs from your server (Docker) so the browser never talks to IKEA directly — no CORS headaches.
         Enter an article number and compare <b>online</b> (market) vs <b>in-store</b> (store-specific) pricing, stock, and location.
+        <span style="opacity:.9">In‑store data usually only works while the selected store is open (business hours).</span>
       </p>
       <div class="badgeRow">
-        <div class="chip">Default store: <b>Perth</b> <span class="mono">(556)</span></div>
-        <div class="chip">Market: <b>AU</b> • Lang: <b>en</b></div>
+        <div class="chip">Store: <b id="chipStore">Loading…</b></div>
+        <div class="chip">Market: <b>Australia</b> • Lang: <b>en</b></div>
         <div class="chip">Input accepts: <b>40492331</b> or <b>404.923.31</b></div>
       </div>
     </div>
@@ -264,9 +284,6 @@
         <div id="loading" class="loadingBar"></div>
         <div class="panelHeader">
           <h2>Lookup</h2>
-          <div class="row">
-            <button class="btn secondary" id="btnCopyApi" title="Copy the /api/lookup URL to clipboard">Copy API Link</button>
-          </div>
         </div>
 
         <div class="panelBody">
@@ -282,14 +299,16 @@
             </div>
 
             <div>
-              <label for="storeId">Store ID</label>
-              <input id="storeId" placeholder="556" value="556" />
+              <label for="storeSelect">Store</label>
+              <select id="storeSelect" disabled>
+                <option value="556">Loading stores…</option>
+              </select>
             </div>
 
             <div>
               <label for="market">Market</label>
               <select id="market">
-                <option value="au" selected>au</option>
+                <option value="au" selected>Australia</option>
               </select>
             </div>
 
@@ -303,6 +322,8 @@
             <button class="btn" id="btnLookup">Lookup</button>
           </div>
 
+          <div class="noticeBox" id="storeHoursBox" style="display:none;"></div>
+
           <div class="history" id="history"></div>
           <div class="errorBox" id="err"></div>
           <div class="noticeBox" id="notice"></div>
@@ -315,13 +336,21 @@
               <h3 id="prodTitle">—</h3>
               <p id="prodDesc">Enter an article number and hit Lookup.</p>
 
-              <div class="row" style="margin:10px 0 8px;">
-                <span class="pill" id="pillStatus">Status: —</span>
-                <span class="pill" id="pillLocation">Location: —</span>
-                <span class="pill mono" id="pillArticle">Article: —</span>
+              <div class="tabs" id="tabs" role="tablist" aria-label="Result tabs">
+                <button class="tab active" id="tabBtnResults" data-tab="results" type="button">Results</button>
+                <button class="tab" id="tabBtnDebug" data-tab="debug" type="button">Debug</button>
               </div>
 
-              <div class="kpis">
+              <div id="tabResults">
+                <div class="row" style="margin:10px 0 8px;">
+                  <span class="pill" id="pillStatus">Status: —</span>
+                  <span class="pill" id="pillFloor">Floor: —</span>
+                  <span class="pill" id="pillDept">Dept: —</span>
+                  <span class="pill" id="pillCode">Code: —</span>
+                  <span class="pill mono" id="pillArticle">Article: —</span>
+                </div>
+
+                <div class="kpis">
                 <div class="kpi">
                   <div class="label">In-store price (incl. GST)</div>
                   <div class="value" id="storePrice">—</div>
@@ -331,6 +360,11 @@
                   <div class="label">Online price (incl. GST)</div>
                   <div class="value" id="onlinePrice">—</div>
                   <div class="hint" id="onlinePriceHint">Source: IKEA product-details</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">Online quantity</div>
+                  <div class="value" id="onlineQty">—</div>
+                  <div class="hint" id="onlineQtyHint">Best‑effort (some items expose a max orderable qty)</div>
                 </div>
                 <div class="kpi">
                   <div class="label">In-store quantity</div>
@@ -344,17 +378,18 @@
                 </div>
               </div>
 
-              <div class="row" style="margin-top:12px;">
-                <a id="lnkProduct" class="pill" href="#" target="_blank" rel="noopener" style="display:none;">Open product page</a>
+                <div class="row" style="margin-top:12px; gap:10px; flex-wrap:wrap;">
+                  <a id="lnkProduct" class="btn secondary" href="#" target="_blank" rel="noopener" style="display:none;">Open product page</a>
+                  <button class="btn secondary" id="btnCopyCd" type="button" style="display:none;" title="Copy a URL formatted for changedetection.io">Copy ChangeDetection link</button>
+                </div>
               </div>
 
-              <details>
-                <summary>
-                  Debug JSON
-                  <span class="mono" style="font-size:12px; color:rgba(255,255,255,.55)">merged response</span>
-                </summary>
+              <div id="tabDebug" style="display:none;">
+                <div class="row" style="margin:10px 0 8px; gap:10px; flex-wrap:wrap;">
+                  <button class="btn secondary" id="btnCopyApi" type="button" title="Copy the /api/lookup URL to clipboard">Copy API link</button>
+                </div>
                 <pre id="debug">—</pre>
-              </details>
+              </div>
             </div>
           </div>
 
@@ -510,6 +545,117 @@
       });
     }
 
+    function slugifyStoreName(name) {
+      return (name || "")
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/&/g, "and")
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-");
+    }
+
+    function setTab(tabName) {
+      const isResults = tabName === "results";
+      $("tabResults").style.display = isResults ? "block" : "none";
+      $("tabDebug").style.display = isResults ? "none" : "block";
+      $("tabBtnResults").classList.toggle("active", isResults);
+      $("tabBtnDebug").classList.toggle("active", !isResults);
+    }
+
+    function getSelectedStore() {
+      const sel = $("storeSelect");
+      const opt = sel?.selectedOptions?.[0] || null;
+      const id = (sel?.value || "").trim();
+      const name = opt?.dataset?.name || opt?.textContent || "";
+      const slug = opt?.dataset?.slug || slugifyStoreName(name);
+      return { id, name: name.replace(/\s*\(\d+\)\s*$/, "").trim(), slug };
+    }
+
+    async function initStores() {
+      const sel = $("storeSelect");
+      sel.disabled = true;
+      sel.innerHTML = `<option value="556">Loading stores…</option>`;
+
+      let stores = [];
+      try {
+        const res = await fetch("/api/stores?country=au", { headers: { "accept": "application/json" } });
+        if (res.ok) {
+          const j = await res.json();
+          stores = (j?.stores || []).map(s => ({
+            id: String(s.id || "").trim(),
+            name: String(s.name || "").trim(),
+            slug: String(s.slug || "").trim() || slugifyStoreName(s.name)
+          })).filter(s => s.id && s.name);
+        }
+      } catch {
+        // ignore; we'll fall back to a minimal option
+      }
+
+      if (!stores.length) {
+        stores = [{ id: "556", name: "Perth", slug: "perth" }];
+      }
+
+      stores.sort((a, b) => a.name.localeCompare(b.name));
+      sel.innerHTML = "";
+      for (const s of stores) {
+        const o = document.createElement("option");
+        o.value = s.id;
+        o.textContent = `${s.name} (${s.id})`;
+        o.dataset.slug = s.slug;
+        o.dataset.name = s.name;
+        sel.appendChild(o);
+      }
+
+      const stored = localStorage.getItem("ikea_store_id") || "";
+      if (stored && [...sel.options].some(o => o.value === stored)) sel.value = stored;
+      sel.disabled = false;
+
+      updateStoreChip();
+      await loadStoreHours();
+
+      sel.addEventListener("change", async () => {
+        localStorage.setItem("ikea_store_id", sel.value);
+        updateStoreChip();
+        await loadStoreHours();
+      });
+    }
+
+    function updateStoreChip() {
+      const s = getSelectedStore();
+      const label = (s.name ? `${s.name} (${s.id})` : s.id) || "—";
+      $("chipStore").textContent = label;
+    }
+
+    async function loadStoreHours() {
+      const box = $("storeHoursBox");
+      const s = getSelectedStore();
+      if (!s.slug) {
+        box.style.display = "none";
+        return;
+      }
+      try {
+        const res = await fetch(`/api/store-hours/${encodeURIComponent(s.slug)}`, {
+          headers: { "accept": "application/json" }
+        });
+        if (!res.ok) throw new Error("hours fetch failed");
+        const j = await res.json();
+        const hours = Array.isArray(j?.hours) ? j.hours : [];
+        if (!hours.length) {
+          box.style.display = "none";
+          return;
+        }
+
+        const lines = hours.map(h => `<div><b>${h.days}</b>: ${h.hours}</div>`).join("");
+        const link = j?.url ? `<div style="margin-top:6px;"><a href="${j.url}" target="_blank" rel="noopener" class="mono" style="color:inherit; text-decoration:underline;">View store page</a></div>` : "";
+        box.innerHTML = `<b>Store hours (selected store):</b> ${lines}${link}`;
+        box.style.display = "block";
+      } catch {
+        box.style.display = "none";
+      }
+    }
+
     async function lookup() {
       clearError();
       clearNotice();
@@ -517,32 +663,33 @@
 
       const market = $("market").value.trim() || "au";
       const lang = $("lang").value.trim() || "en";
-      const store = ($("storeId").value || "556").trim();
+      const store = getSelectedStore().id || "556";
 
-const urlVal = (($("productUrl") && $("productUrl").value) || "").trim();
-let articleDigits = normalizeArticle($("article").value);
+      const urlVal = (($("productUrl") && $("productUrl").value) || "").trim();
+      let articleDigits = normalizeArticle($("article").value);
 
-// Allow lookup by pasting an IKEA product URL (or even pasting a URL into the article field)
-const extracted = extractArticleFromUrl(urlVal || $("article").value);
-if (extracted) {
-  articleDigits = extracted;
-  $("article").value = extracted;
-}
+      // Allow lookup by pasting an IKEA product URL (or even pasting a URL into the article field)
+      const extracted = extractArticleFromUrl(urlVal || $("article").value);
+      if (extracted) {
+        articleDigits = extracted;
+        $("article").value = extracted;
+      }
 
       if (!articleDigits || articleDigits.length !== 8) {
-  setLoading(false);
-  showError("Please enter a valid 8-digit IKEA article number (e.g. 50559793 or 505.597.93), or paste an IKEA product URL.");
-  return;
-}
+        setLoading(false);
+        showError("Please enter a valid 8-digit IKEA article number (e.g. 50559793 or 505.597.93), or paste an IKEA product URL.");
+        return;
+      }
 
       $("pillArticle").textContent = `Article: ${articleDigits}`;
       $("pillArticle").className = "pill mono";
 
-      const apiUrl = `/api/lookup?article=${encodeURIComponent(articleDigits)}&store=${encodeURIComponent(store)}&market=${encodeURIComponent(market)}&lang=${encodeURIComponent(lang)}`;
-            try {
-        const res = await fetch(apiUrl, { headers: { "accept":"application/json" }});
+      const apiPath = `/api/lookup?article=${encodeURIComponent(articleDigits)}&store=${encodeURIComponent(store)}&market=${encodeURIComponent(market)}&lang=${encodeURIComponent(lang)}`;
+
+      try {
+        const res = await fetch(apiPath, { headers: { "accept": "application/json" } });
         if (!res.ok) {
-          const txt = await res.text().catch(()=> "");
+          const txt = await res.text().catch(() => "");
           throw new Error(`HTTP ${res.status}: ${txt.slice(0, 300)}`);
         }
         const data = await res.json();
@@ -550,12 +697,11 @@ if (extracted) {
         // Friendly handling when IKEA scan-shop is blocked during end-of-day / store closed
         if (data?.storeClosed) {
           clearError();
-      clearNotice();
-          showNotice(data?.storeClosedMessage || ":-(" + " The store is currently closed. In-store price/location may be unavailable.");
+          clearNotice();
+          showNotice(data?.storeClosedMessage || ":-( The store is currently closed. In-store price/location may be unavailable.");
         } else {
           clearNotice();
         }
-
 
         // Product details
         $("prodTitle").textContent = data?.product?.title ?? "—";
@@ -565,44 +711,39 @@ if (extracted) {
         // Prices
         const storeRaw = data?.prices?.store?.raw ?? null;
         const onlineRaw = data?.prices?.online?.raw ?? null;
-        // Prefer numeric prices (avoid rendering HTML like <sup> tags in strings)
         $("storePrice").textContent = money(storeRaw);
         $("onlinePrice").textContent = money(onlineRaw);
 
-        // Location (floor + department + internal code)
-const rawDiv = data?.location?.division ?? null; // e.g. MARKET_HALL / SHOWROOM
-const floor = rawDiv ? titleCase(String(rawDiv).replace(/_/g," ")) : null;
-const dept = data?.location?.department ?? null;
-const code = data?.location?.code ?? null;
+        // Online qty
+        const onlineQty = data?.stock?.onlineQtyMax ?? null;
+        if (onlineQty !== null && onlineQty !== undefined) {
+          $("onlineQty").textContent = String(onlineQty);
+          $("onlineQtyHint").textContent = "Best‑effort (often a max orderable qty)";
+        } else {
+          $("onlineQty").textContent = "—";
+          $("onlineQtyHint").textContent = "Not exposed for this item";
+        }
 
-const locParts = [];
-if (floor) locParts.push(`Floor: ${floor}`);
-if (dept) locParts.push(`Dept: ${dept}`);
-if (code) locParts.push(`Code: ${code}`);
-const locText = locParts.length ? locParts.join(" • ") : "—";
-
-$("pillLocation").textContent = `Location: ${locText}`;
-$("pillLocation").className = "pill";
+        // Location pills
+        const floor = data?.location?.floor ?? null;
+        const dept = data?.location?.department ?? null;
+        const code = data?.location?.code ?? null;
+        $("pillFloor").textContent = `Floor: ${floor ?? "—"}`;
+        $("pillDept").textContent = `Dept: ${dept ?? "—"}`;
+        $("pillCode").textContent = `Code: ${code ?? "—"}`;
 
         // Stock
-statusPill(data?.stock?.status ?? null);
+        statusPill(data?.stock?.status ?? null);
 
-$("storeQty").textContent =
-  (data?.stock?.qty !== null && data?.stock?.qty !== undefined) ? String(data.stock.qty) : "—";
+        $("storeQty").textContent = (data?.stock?.qty !== null && data?.stock?.qty !== undefined) ? String(data.stock.qty) : "—";
 
-const availText =
-  data?.stock?.descriptionText ??
-  (data?.stock?.description ? stripTags(data.stock.description) : null);
+        const availText = data?.stock?.descriptionText ?? (data?.stock?.description ? stripTags(data.stock.description) : null);
+        const itemLoc = data?.location?.itemLocationTextText ?? data?.location?.itemLocationText ?? null;
 
-const itemLoc =
-  data?.location?.itemLocationTextText ??
-  data?.location?.itemLocationText ??
-  null;
-
-$("storeQtyHint").textContent = [
-  availText ? `availability: ${availText}` : null,
-  itemLoc ? `itemLocation: ${stripTags(itemLoc)}` : null
-].filter(Boolean).join(" • ") || "—";
+        $("storeQtyHint").textContent = [
+          availText ? `availability: ${availText}` : null,
+          itemLoc ? `itemLocation: ${stripTags(itemLoc)}` : null
+        ].filter(Boolean).join(" • ") || "—";
 
         // Product URL
         const purl = data?.product?.productUrl ?? null;
@@ -612,6 +753,9 @@ $("storeQtyHint").textContent = [
         } else {
           $("lnkProduct").style.display = "none";
         }
+
+        // ChangeDetection link button
+        $("btnCopyCd").style.display = "inline-flex";
 
         // Diff
         if (typeof onlineRaw === "number" && typeof storeRaw === "number") {
@@ -635,7 +779,7 @@ $("storeQtyHint").textContent = [
     async function copyApiLink() {
       const market = $("market").value.trim() || "au";
       const lang = $("lang").value.trim() || "en";
-      const store = ($("storeId").value || "556").trim();
+      const store = getSelectedStore().id || "556";
       const articleDigits = normalizeArticle($("article").value);
       if (!articleDigits) return toast("Enter article first");
       const apiUrl = `${location.origin}/api/lookup?article=${articleDigits}&store=${store}&market=${market}&lang=${lang}`;
@@ -647,8 +791,27 @@ $("storeQtyHint").textContent = [
       }
     }
 
+    async function copyChangedetectionLink() {
+      const s = getSelectedStore();
+      const store = s.id || "556";
+      const articleDigits = normalizeArticle($("article").value);
+      if (!articleDigits) return toast("Enter article first");
+      const cdUrl = `${location.origin}/${store}/${articleDigits}`;
+      try {
+        await navigator.clipboard.writeText(cdUrl);
+        toast("ChangeDetection link copied");
+      } catch {
+        toast("Clipboard blocked");
+      }
+    }
+
+    $("tabBtnResults").addEventListener("click", () => setTab("results"));
+    $("tabBtnDebug").addEventListener("click", () => setTab("debug"));
+
     $("btnLookup").addEventListener("click", lookup);
     $("btnCopyApi").addEventListener("click", copyApiLink);
+    $("btnCopyCd").addEventListener("click", copyChangedetectionLink);
+
     $("article").addEventListener("keydown", (e) => { if (e.key === "Enter") lookup(); });
     $("productUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") lookup(); });
     $("productUrl").addEventListener("blur", () => {
@@ -656,8 +819,9 @@ $("storeQtyHint").textContent = [
       if (extracted) $("article").value = extracted;
     });
 
+    setTab("results");
     renderHistory();
-    lookup();
+    initStores().then(() => lookup());
   </script>
 </body>
 </html>

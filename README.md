@@ -7,6 +7,12 @@ This project serves a shiny web UI and a small proxy API that fetches IKEA AU da
 - In-store price + department via: `/scan-shop/v6/{market}/{lang}/stores/{store}/product/{article}/1`
 - In-store stock text (and qty) via: `/range/v6/{market}/{lang}/browse/availability/product/{article}?storeIds={store}`
 
+## UI features
+- **Australia store dropdown** (store name + ID) is sourced from `ikea-availability-checker`.
+- **Store hours** are scraped from the selected store's IKEA page (e.g. `/au/en/stores/perth/`) and displayed in the UI.
+- **ChangeDetection page** format is: `/<STOREID>/<ARTICLEID>` (server-rendered, large readable text).
+- **Debug tab** contains the raw JSON plus a button to copy the `/api/lookup` URL.
+
 ## Quick start
 1) Install Docker
 2) In this folder run:
@@ -21,6 +27,10 @@ docker compose up -d --build
 ## API
 - `GET /api/lookup?article=40492331&store=556&market=au&lang=en`
 
+## ChangeDetection
+- `GET /556/40492331` (store 556, article 40492331)
+
 ## Notes
 - These IKEA endpoints are not an official public API contract and may change.
 - The server includes a small in-memory TTL cache to reduce repeated calls.
+- In-store data is often only available while the selected store is open.

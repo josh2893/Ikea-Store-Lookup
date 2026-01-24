@@ -5,6 +5,7 @@
   "type": "module",
   "description": "IKEA AU in-store vs online lookup (proxy + UI)",
   "dependencies": {
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "ikea-availability-checker": "^2.0.4"
   }
 }

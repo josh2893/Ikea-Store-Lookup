@@ -1,7 +1,20 @@
 import express from "express";
+import { createRequire } from "module";
+
+// Optional: used to source the official store list (400+ stores worldwide)
+// We only use it for Australia dropdown options.
+const require = createRequire(import.meta.url);
+let ikeaChecker = null;
+try {
+  ikeaChecker = require("ikea-availability-checker");
+} catch {
+  // If dependency isn't installed for some reason, we fall back to a minimal embedded list.
+  ikeaChecker = null;
+}
 
 const app = express();
 const PORT = Number(process.env.PORT || 8080);
+const DEFAULT_STORE = String(process.env.DEFAULT_STORE || "556");
 
 // ---- Simple in-memory TTL cache (reduces hammering IKEA endpoints) ----
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 60_000); // 60s default
@@ -17,8 +30,8 @@ function cacheGet(key) {
   return v.value;
 }
 
-function cacheSet(key, value) {
-  cache.set(key, { expires: Date.now() + CACHE_TTL_MS, value });
+function cacheSet(key, value, ttlMs = CACHE_TTL_MS) {
+  cache.set(key, { expires: Date.now() + ttlMs, value });
   // basic bound to prevent unbounded growth
   if (cache.size > 500) {
     const firstKey = cache.keys().next().value;
@@ -101,6 +114,104 @@ async function fetchJsonInfo(url) {
   }
 
   return { ok: false, status, data, text };
+}
+
+// ---- Text fetch (HTML) ----
+async function fetchText(url) {
+  const key = `text:${url}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const res = await fetch(url, {
+    headers: {
+      "accept": "text/html,*/*",
+      "user-agent": "ikea-lookup/1.0 (+server-side proxy)"
+    }
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status} from ${url}: ${txt.slice(0, 200)}`);
+  }
+
+  const html = await res.text();
+  cacheSet(key, html);
+  return html;
+}
+
+function slugifyStoreName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function decodeHtmlEntities(s) {
+  return String(s || "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#039;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Store hours (HTML scrape) cache: 6h by default
+const STORE_HOURS_TTL_MS = Number(process.env.STORE_HOURS_TTL_MS || 6 * 60 * 60 * 1000);
+const storeHoursCache = new Map(); // slug -> { expires, value }
+
+function storeHoursGet(slug) {
+  const v = storeHoursCache.get(slug);
+  if (!v) return null;
+  if (Date.now() > v.expires) {
+    storeHoursCache.delete(slug);
+    return null;
+  }
+  return v.value;
+}
+
+function storeHoursSet(slug, value) {
+  storeHoursCache.set(slug, { expires: Date.now() + STORE_HOURS_TTL_MS, value });
+  if (storeHoursCache.size > 200) {
+    const firstKey = storeHoursCache.keys().next().value;
+    if (firstKey) storeHoursCache.delete(firstKey);
+  }
+}
+
+function parseStoreHoursFromHtml(html) {
+  // Target the block: <div class="hnf-store__container__block"> ... <h2>Store</h2> ... <dl>...</dl>
+  const blockRe = /<div[^>]*class=["'][^"']*hnf-store__container__block[^"']*["'][^>]*>[\s\S]*?<h2[^>]*>\s*Store\s*<\/h2>[\s\S]*?<dl[^>]*>([\s\S]*?)<\/dl>/i;
+  const bm = String(html || "").match(blockRe);
+  if (!bm) return [];
+
+  const dl = bm[1] || "";
+  const items = [];
+  const pairRe = /<dt[^>]*>([\s\S]*?)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/gi;
+  let m;
+  while ((m = pairRe.exec(dl))) {
+    const days = decodeHtmlEntities(stripHtml(m[1]));
+    const hours = decodeHtmlEntities(stripHtml(m[2]));
+    if (days && hours) items.push({ days, hours });
+  }
+  return items;
+}
+
+async function getStoreHours(slug) {
+  const cached = storeHoursGet(slug);
+  if (cached) return cached;
+
+  const url = `https://www.ikea.com/au/en/stores/${slug}/`;
+  const html = await fetchText(url);
+  const hours = parseStoreHoursFromHtml(html);
+  const value = { slug, url, hours };
+  storeHoursSet(slug, value);
+  return value;
 }
 
 function stripHtml(input) {
@@ -210,6 +321,15 @@ async function lookupMerged({ article, store, market, lang }) {
   const onlineRaw = details?.product?.pricePackage?.includingVat?.rawPrice ?? null;
   const onlinePretty = details?.product?.pricePackage?.includingVat?.sellingPrice ?? null;
 
+  // Online "quantity" (best-effort): some markets expose a max orderable qty.
+  // Not all IKEA payloads include this; if missing, this will be null.
+  const onlineQtyMax =
+    details?.product?.buyingDecisionSection?.quantityPicker?.max ??
+    details?.product?.buyingDecisionSection?.quantityPicker?.maxQuantity ??
+    details?.product?.quantityPicker?.max ??
+    details?.product?.purchaseOptions?.[0]?.quantityPicker?.max ??
+    null;
+
   // In-store (store-specific; may be unavailable if STORE_CLOSED)
   const storeRaw =
     scan?.presentationSection?.productCard?.product?.pricePackage?.includingVat?.rawPrice ??
@@ -245,6 +365,14 @@ async function lookupMerged({ article, store, market, lang }) {
     null;
 
   const itemLocationTextPlain = itemLocationText ? stripHtml(itemLocationText) : null;
+
+  // Human-friendly floor/department/code split (for UI pills)
+  const floorPretty = division ? titleCase(String(division).replace(/_/g, " ")) : null;
+
+  // Many items include a location code like SPS007 inside the itemLocationText.
+  let locationCode = deptId;
+  const codeMatch = String(itemLocationTextPlain || "").match(/\b[A-Z]{2,5}\d{2,5}\b/);
+  if (codeMatch) locationCode = codeMatch[0];
 
   const qtyMax = scan?.buyingDecisionSection?.quantityPicker?.max ?? null;
 
@@ -310,14 +438,16 @@ async function lookupMerged({ article, store, market, lang }) {
     },
     stock: {
       qty,
+      onlineQty: onlineQtyMax,
       status: stockStatus,
       description: avDesc,
       descriptionText: avDescPlain
     },
     location: {
       division,
+      floor: floorPretty,
       department: deptName,
-      code: deptId,
+      code: locationCode,
       itemLocationText,
       itemLocationTextText: itemLocationTextPlain
     }
@@ -339,6 +469,69 @@ app.get("/api/ping", (req, res) => {
   res.json({ ok: true, ts: Date.now() });
 });
 
+// Minimal AU fallback list (only used if ikea-availability-checker isn't available)
+const FALLBACK_AU_STORES = [
+  // Perth is included as a sensible default because it's commonly used in examples.
+  // Full AU store list comes from the ikea-availability-checker dependency.
+  { id: "556", name: "Perth", slug: "perth" }
+];
+
+/**
+ * Store list for dropdown
+ * GET /api/stores?country=au
+ */
+app.get("/api/stores", (req, res) => {
+  const countryCode = String(req.query.country || "au").toLowerCase();
+
+  try {
+    let stores = [];
+    if (ikeaChecker?.stores?.findByCountryCode) {
+      stores = ikeaChecker.stores.findByCountryCode(countryCode) || [];
+      stores = stores
+        .map((s) => {
+          const id = String(s?.buCode ?? s?.storeId ?? s?.id ?? "").trim();
+          const name = String(s?.name ?? "").trim();
+          if (!id || !name) return null;
+          const slug = slugifyStoreName(name);
+          return {
+            id,
+            name,
+            slug,
+            countryCode: String(s?.countryCode ?? countryCode).toLowerCase(),
+            country: s?.country ?? (countryCode === "au" ? "Australia" : undefined),
+            url: `https://www.ikea.com/${countryCode}/en/stores/${slug}/`
+          };
+        })
+        .filter(Boolean);
+    } else {
+      stores = FALLBACK_AU_STORES;
+    }
+
+    // If we're in AU, keep only AU stores (in case the checker returns more)
+    if (countryCode === "au") stores = stores.filter((s) => String(s.countryCode || "").toLowerCase() === "au");
+
+    stores.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    res.json({ ok: true, countryCode, country: countryCode === "au" ? "Australia" : undefined, stores });
+  } catch (e) {
+    res.json({ ok: true, countryCode, country: countryCode === "au" ? "Australia" : undefined, stores: FALLBACK_AU_STORES });
+  }
+});
+
+/**
+ * Store opening hours (scraped from https://www.ikea.com/au/en/stores/<slug>/)
+ * GET /api/store-hours/perth
+ */
+app.get("/api/store-hours/:slug", async (req, res) => {
+  try {
+    const slug = slugifyStoreName(req.params.slug);
+    if (!slug) return res.status(400).json({ error: "Missing store slug" });
+    const data = await getStoreHours(slug);
+    res.json({ ok: true, ...data });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
 /**
  * GET /api/lookup?article=40492331&store=556&market=au&lang=en
  */
@@ -346,7 +539,7 @@ app.get("/api/lookup", async (req, res) => {
   try {
     const market = String(req.query.market || "au").toLowerCase();
     const lang = String(req.query.lang || "en").toLowerCase();
-    const store = String(req.query.store || "556");
+    const store = String(req.query.store || DEFAULT_STORE);
     const article = normArticle(req.query.article);
 
     if (!article) {
@@ -360,83 +553,72 @@ app.get("/api/lookup", async (req, res) => {
   }
 });
 
-/**
- * Changedetection-friendly page:
- *   GET /10455151?store=556&market=au&lang=en
- * Server-rendered (no JS), large readable text, stable IDs for scraping.
- */
-app.get("/:article([0-9\\.]+)", async (req, res) => {
-  try {
-    const market = String(req.query.market || "au").toLowerCase();
-    const lang = String(req.query.lang || "en").toLowerCase();
-    const store = String(req.query.store || "556");
-    const article = normArticle(req.params.article);
+async function renderChangedetectionPage(req, res, { store, article }) {
+  const market = String(req.query.market || "au").toLowerCase();
+  const lang = String(req.query.lang || "en").toLowerCase();
 
-    if (!article) {
-      return res.status(400).send("Bad Request: missing article number.");
+  const data = await lookupMerged({ article, store, market, lang });
+
+  const title = data?.product?.title ?? `IKEA article ${article}`;
+  const desc = data?.product?.description ? ` — ${data.product.description}` : "";
+  const pageTitle = `${title}${desc}`;
+
+  const inStockText = (() => {
+    if (data.storeClosed) return "Store closed (End of day handling)";
+    const s = data?.stock?.status ?? "";
+    const d = data?.stock?.descriptionText ?? "";
+    if (String(s).toUpperCase().includes("OUT")) return "No";
+    if (String(s).toUpperCase().includes("LOW") || String(s).toUpperCase().includes("HIGH")) return "Yes";
+    // fallback based on qty
+    const q = data?.stock?.qty;
+    if (typeof q === "number") return q > 0 ? "Yes" : "No";
+    // fallback to description text
+    if (d.toLowerCase().includes("in stock")) return "Yes";
+    if (d.toLowerCase().includes("out of stock")) return "No";
+    return "—";
+  })();
+
+  const priceRaw = data?.prices?.store?.raw;
+  const priceText = money(priceRaw);
+  const priceNumber = numberFixed(priceRaw, 2);
+  const priceNumberMeta = priceNumber === "—" ? "" : priceNumber;
+  const qtyText = (data?.stock?.qty ?? "—").toString();
+
+  const schemaAvailability =
+    inStockText === "Yes" ? "https://schema.org/InStock" :
+    inStockText === "No" ? "https://schema.org/OutOfStock" :
+    "https://schema.org/Discontinued";
+
+  const productLd = {
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    "name": pageTitle,
+    "sku": article,
+    "image": data?.product?.imageUrl ? [data.product.imageUrl] : undefined,
+    "url": data?.product?.productUrl ?? undefined,
+    "offers": {
+      "@type": "Offer",
+      "priceCurrency": "AUD",
+      "price": Number.isFinite(Number(priceRaw)) ? Number(priceRaw).toFixed(2) : undefined,
+      "availability": schemaAvailability
     }
+  };
 
-    const data = await lookupMerged({ article, store, market, lang });
+  const productLdJson = JSON.stringify(productLd).replace(/</g, "\\u003c");
 
-    const title = data?.product?.title ?? `IKEA article ${article}`;
-    const desc = data?.product?.description ? ` — ${data.product.description}` : "";
-    const pageTitle = `${title}${desc}`;
+  const floor = data?.location?.floor ?? null;
+  const dept = data?.location?.department ?? null;
+  const code = data?.location?.code ?? null;
+  const locParts = [];
+  if (floor) locParts.push(floor);
+  if (dept) locParts.push(dept);
+  if (code) locParts.push(code);
+  const locText = locParts.length ? locParts.join(" • ") : "—";
 
-    const inStockText = (() => {
-      if (data.storeClosed) return "Store closed (End of day handling)";
-      const s = data?.stock?.status ?? "";
-      const d = data?.stock?.descriptionText ?? "";
-      if (String(s).toUpperCase().includes("OUT")) return "No";
-      if (String(s).toUpperCase().includes("LOW") || String(s).toUpperCase().includes("HIGH")) return "Yes";
-      // fallback based on qty
-      const q = data?.stock?.qty;
-      if (typeof q === "number") return q > 0 ? "Yes" : "No";
-      // fallback to description text
-      if (d.toLowerCase().includes("in stock")) return "Yes";
-      if (d.toLowerCase().includes("out of stock")) return "No";
-      return "—";
-    })();
+  const favicon = "https://www.ikea.com/favicon.ico";
 
-    const priceRaw = data?.prices?.store?.raw;
-    const priceText = money(priceRaw);
-    const priceNumber = numberFixed(priceRaw, 2);
-    const priceNumberMeta = priceNumber === "—" ? "" : priceNumber;
-    const qtyText = (data?.stock?.qty ?? "—").toString();
-
-    const schemaAvailability =
-      inStockText === "Yes" ? "https://schema.org/InStock" :
-      inStockText === "No" ? "https://schema.org/OutOfStock" :
-      "https://schema.org/Discontinued";
-
-    const productLd = {
-      "@context": "https://schema.org/",
-      "@type": "Product",
-      "name": pageTitle,
-      "sku": article,
-      "image": data?.product?.imageUrl ? [data.product.imageUrl] : undefined,
-      "url": data?.product?.productUrl ?? undefined,
-      "offers": {
-        "@type": "Offer",
-        "priceCurrency": "AUD",
-        "price": Number.isFinite(Number(priceRaw)) ? Number(priceRaw).toFixed(2) : undefined,
-        "availability": schemaAvailability
-      }
-    };
-
-    const productLdJson = JSON.stringify(productLd).replace(/</g, "\\u003c");
-
-    // Optional: include location hints
-    const divPretty = data?.location?.division ? titleCase(String(data.location.division).replace(/_/g, " ")) : null;
-    const dept = data?.location?.department ?? null;
-    const locParts = [];
-    if (divPretty) locParts.push(divPretty);
-    if (dept) locParts.push(dept);
-    const locText = locParts.length ? locParts.join(" • ") : "—";
-
-    const favicon = "https://www.ikea.com/favicon.ico";
-
-    res.setHeader("content-type", "text/html; charset=utf-8");
-    res.status(200).send(`<!doctype html>
+  res.setHeader("content-type", "text/html; charset=utf-8");
+  res.status(200).send(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -498,6 +680,42 @@ Quantity: ${qtyText}</pre>
   </div>
 </body>
 </html>`);
+}
+
+/**
+ * Changedetection-friendly page:
+ *   GET /<storeId>/<articleId>
+ *   Example: /556/10455151
+ * Server-rendered (no JS), large readable text, stable IDs for scraping.
+ */
+app.get("/:store([0-9]+)/:article([0-9\\.]+)", async (req, res) => {
+  try {
+    const store = String(req.params.store || DEFAULT_STORE);
+    const article = normArticle(req.params.article);
+    if (!article) return res.status(400).send("Bad Request: missing article number.");
+    await renderChangedetectionPage(req, res, { store, article });
+  } catch (e) {
+    res.setHeader("content-type", "text/html; charset=utf-8");
+    const msg = e?.message || String(e);
+    res.status(200).send(`<!doctype html><html><head><meta charset="utf-8"><title>IKEA lookup error</title><link rel="icon" href="https://www.ikea.com/favicon.ico"></head><body style="font-family:system-ui;background:#0b1020;color:#fff;padding:24px;">
+      <h1 style="margin:0 0 8px;">IKEA lookup</h1>
+      <div style="padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);font-size:18px;">
+        ${escapeHtml(msg)}
+      </div>
+    </body></html>`);
+  }
+});
+
+app.get("/:article([0-9\\.]+)", async (req, res) => {
+  try {
+    const article = normArticle(req.params.article);
+
+    if (!article) {
+      return res.status(400).send("Bad Request: missing article number.");
+    }
+    // Backwards-compat: /<article>?store=556
+    const store = String(req.query.store || DEFAULT_STORE);
+    await renderChangedetectionPage(req, res, { store, article });
   } catch (e) {
     // Keep it user-friendly for changedetection: return 200 with an error banner
     res.setHeader("content-type", "text/html; charset=utf-8");
