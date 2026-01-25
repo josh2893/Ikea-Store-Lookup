@@ -561,7 +561,10 @@ const cia = ciaRes?.ok ? summarizeCia(ciaRes.data, { store, article }) : null;
   const onlineTitle = details?.product?.title ?? null;
   const onlineDesc = details?.product?.description ?? details?.product?.typeName ?? null;
   const onlineUrl = details?.product?.productUrl ?? null;
-  const onlineImg = details?.product?.images?.[0]?.imageUrl ?? null;
+  const onlineImgs = Array.isArray(details?.product?.images)
+    ? details.product.images.map(i => i?.imageUrl).filter(Boolean)
+    : [];
+  const onlineImg = onlineImgs[0] ?? null;
 
   const onlineRaw = details?.product?.pricePackage?.includingVat?.rawPrice ?? null;
   const onlinePretty = details?.product?.pricePackage?.includingVat?.sellingPrice ?? null;
@@ -650,11 +653,14 @@ const cia = ciaRes?.ok ? summarizeCia(ciaRes.data, { store, article }) : null;
   const statusUpper = String(stockStatus || "").toUpperCase();
   const qty = statusUpper.includes("OUT") ? 0 : (avQty ?? qtyMax ?? null);
 
+  const imageUrls = Array.from(new Set([scanImg, ...onlineImgs].filter(Boolean)));
+
   const product = {
     title: scanTitle ?? onlineTitle ?? null,
     description: scanDesc ?? onlineDesc ?? null,
     productUrl: onlineUrl ?? null,
-    imageUrl: scanImg ?? onlineImg ?? null
+    imageUrl: imageUrls[0] ?? null,
+    imageUrls
   };
 
   const result = {
@@ -845,7 +851,7 @@ async function renderChangedetectionPage(req, res, { store, article }) {
     "@type": "Product",
     "name": pageTitle,
     "sku": article,
-    "image": data?.product?.imageUrl ? [data.product.imageUrl] : undefined,
+    "image": Array.isArray(data?.product?.imageUrls) && data.product.imageUrls.length ? data.product.imageUrls : (data?.product?.imageUrl ? [data.product.imageUrl] : undefined),
     "url": data?.product?.productUrl ?? undefined,
     "offers": {
       "@type": "Offer",
@@ -957,28 +963,6 @@ app.get("/:store([0-9]+)/:article([0-9\\.]+)", async (req, res) => {
   }
 });
 
-app.get("/:article([0-9\\.]+)", async (req, res) => {
-  try {
-    const article = normArticle(req.params.article);
-
-    if (!article) {
-      return res.status(400).send("Bad Request: missing article number.");
-    }
-    // Backwards-compat: /<article>?store=556
-    const store = String(req.query.store || DEFAULT_STORE);
-    await renderChangedetectionPage(req, res, { store, article });
-  } catch (e) {
-    // Keep it user-friendly for changedetection: return 200 with an error banner
-    res.setHeader("content-type", "text/html; charset=utf-8");
-    const msg = e?.message || String(e);
-    res.status(200).send(`<!doctype html><html><head><meta charset="utf-8"><title>IKEA lookup error</title><link rel="icon" href="https://www.ikea.com/favicon.ico"></head><body style="font-family:system-ui;background:#0b1020;color:#fff;padding:24px;">
-      <h1 style="margin:0 0 8px;">IKEA lookup</h1>
-      <div style="padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);font-size:18px;">
-        ${escapeHtml(msg)}
-      </div>
-    </body></html>`);
-  }
-});
 
 function escapeHtml(s) {
   return String(s ?? "")

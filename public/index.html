@@ -62,6 +62,113 @@
     h1{font-size: clamp(22px, 2.8vw, 34px); margin:0; letter-spacing:-.02em; line-height:1.15;}
     .sub{margin:8px 0 0; color:var(--muted); max-width: 90ch;}
     .badgeRow{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px;}
+    /* Brand / Logo */
+    .brandRow{display:flex; gap:12px; align-items:flex-start;}
+    .logoMark{
+      width:44px; height:44px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.12);
+      box-shadow: 0 16px 40px rgba(0,0,0,.25);
+      display:flex; align-items:center; justify-content:center;
+      flex: 0 0 auto;
+    }
+    .logoMark svg{width:26px; height:26px; opacity:.95}
+
+    /* Action buttons */
+    .actionRow{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;}
+    .actionBtn{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:11px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.14);
+      color: rgba(255,255,255,.92);
+      font-weight: 900;
+      letter-spacing: .01em;
+      text-decoration:none;
+      cursor:pointer;
+      transition: transform .12s ease, border-color .12s ease, background .12s ease;
+    }
+    .actionBtn:hover{border-color: rgba(124,58,237,.45); background: rgba(124,58,237,.12); transform: translateY(-1px);}
+    .actionBtn:active{transform: translateY(0px);}
+    .actionBtn .icon{width:16px; height:16px; opacity:.9}
+
+    /* Store hours (collapsible) */
+    details.hours{
+      margin-top:12px;
+      border-radius: var(--radius2);
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.10);
+      overflow:hidden;
+    }
+    details.hours summary{
+      cursor:pointer;
+      padding:12px 12px;
+      list-style:none;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      user-select:none;
+    }
+    details.hours summary::-webkit-details-marker{display:none;}
+    .hoursSum{display:flex; flex-direction:column; gap:2px;}
+    .hoursTitle{font-size:12px; color:var(--muted); font-weight:900; text-transform:uppercase; letter-spacing:.06em;}
+    .hoursMeta{font-size:13px; color:var(--muted2);}
+    .chev{width:14px; height:14px; opacity:.75; transition: transform .15s ease;}
+    details[open].hours .chev{transform: rotate(180deg);}
+    .hoursBody{padding: 0 12px 12px;}
+    .hoursTable{width:100%; border-collapse:collapse; margin-top:8px; font-size:13px;}
+    .hoursTable td{padding:8px 0; border-bottom:1px solid rgba(255,255,255,.08); vertical-align:top;}
+    .hoursTable tr:last-child td{border-bottom:none;}
+    .hoursTable td:first-child{color:var(--muted); font-weight:800; width:34%;}
+    .hoursLink{margin-top:10px; display:inline-flex; gap:8px; align-items:center; color: rgba(255,255,255,.88); text-decoration:underline;}
+
+    /* Image carousel */
+    .imgBox{position:relative;}
+    .imgWrap{position:relative; width:100%; height:100%; cursor: zoom-in;}
+    .imgNav{
+      position:absolute; top:50%; transform: translateY(-50%);
+      width:34px; height:34px; border-radius:999px;
+      background: rgba(0,0,0,.35);
+      border:1px solid rgba(255,255,255,.18);
+      display:flex; align-items:center; justify-content:center;
+      color: rgba(255,255,255,.9);
+      opacity:0;
+      transition: opacity .12s ease, transform .12s ease;
+      cursor:pointer;
+    }
+    .imgNav.left{left:8px;}
+    .imgNav.right{right:8px;}
+    .imgNav:hover{border-color: rgba(124,58,237,.55); background: rgba(124,58,237,.22);}
+    .imgBox:hover .imgNav{opacity:1;}
+    .imgCounter{
+      position:absolute; bottom:8px; right:8px;
+      padding:6px 8px; border-radius:999px;
+      background: rgba(0,0,0,.38);
+      border:1px solid rgba(255,255,255,.18);
+      color: rgba(255,255,255,.86);
+      font-size:12px;
+      font-family: var(--mono);
+    }
+
+    /* Fullscreen image modal */
+    .imgModalCard{
+      width: min(980px, 100%);
+      border-radius: 18px;
+      background: rgba(17,18,20,.98);
+      border:1px solid rgba(255,255,255,.14);
+      box-shadow: 0 18px 70px rgba(0,0,0,.55);
+      overflow:hidden;
+    }
+    .imgModalTop{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding: 12px 14px;
+      border-bottom:1px solid rgba(255,255,255,.10);
+    }
+    .imgModalTitle{font-size:12px; color:var(--muted); font-weight:900; letter-spacing:.06em; text-transform:uppercase;}
+    .imgModalBody{padding: 12px 12px 14px;}
+    .imgModalImg{width:100%; max-height: 78vh; object-fit:contain; border-radius: 14px; border:1px solid rgba(255,255,255,.10); background: rgba(0,0,0,.20);}
+    .imgModalNavRow{display:flex; justify-content:space-between; gap:10px; margin-top:10px;}
+
     .chip{
       display:inline-flex; align-items:center; gap:8px;
       padding:8px 10px; border-radius:999px;
@@ -339,12 +446,24 @@
 <body>
   <div class="wrap">
     <div class="hero">
-      <h1>Compares store to online</h1>
-      <p class="sub">
-        This runs from your server (Docker) so the browser never talks to IKEA directly — no CORS headaches.
-        Enter an article number and compare <b>online</b> (market) vs <b>in-store</b> (store-specific) pricing, stock, and location.
-        <span style="opacity:.9">In‑store data usually only works while the selected store is open (business hours).</span>
-      </p>
+      <div class="brandRow">
+        <div class="logoMark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7 7.5h10" stroke="rgba(255,255,255,.92)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M7 12h6" stroke="rgba(255,255,255,.92)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M7 16.5h10" stroke="rgba(255,255,255,.92)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M16 10l4-4" stroke="rgba(6,182,212,.95)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M17 6h3v3" stroke="rgba(6,182,212,.95)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Store vs Online</h1>
+          <p class="sub">
+            Enter an article number and compare <b>online</b> (market) vs <b>in-store</b> (store-specific) pricing, stock, and location.
+            <span style="opacity:.9">In‑store data usually only works while the selected store is open (business hours).</span>
+          </p>
+        </div>
+      </div>
       <div class="badgeRow">
         <div class="chip">Store: <b id="chipStore">Loading…</b></div>
         <div class="chip">Market: <b>Australia</b> • Lang: <b>en</b></div>
@@ -395,7 +514,18 @@
             <button class="btn" id="btnLookup">Lookup</button>
           </div>
 
-          <div class="noticeBox" id="storeHoursBox" style="display:none;"></div>
+          <details class="hours" id="storeHoursBox" style="display:none;">
+            <summary>
+              <div class="hoursSum">
+                <div class="hoursTitle">Store hours</div>
+                <div class="hoursMeta" id="storeHoursMeta">—</div>
+              </div>
+              <svg class="chev" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M5 7.5l5 5 5-5" stroke="rgba(255,255,255,.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </summary>
+            <div class="hoursBody" id="storeHoursBody"></div>
+          </details>
 
           <div class="history" id="history"></div>
           <div class="errorBox" id="err"></div>
@@ -457,35 +587,80 @@
   <div class="card" id="reasonCard" style="display:none;">
     <div class="cardTitle">Availability reason codes</div>
     <div class="cardBody" id="reasonBody">—</div>
-    <div class="hint">Click a reason code for an explanation.</div>
+    <div class="hint">Tap a code for meaning + raw payload.</div>
   </div>
 </div>
 
-                <div class="row" style="margin-top:12px; gap:10px; flex-wrap:wrap;">
-                  <a id="lnkProduct" class="btn secondary" href="#" target="_blank" rel="noopener" style="display:none;">Open product page</a>
-                  <button class="btn secondary" id="btnCopyCd" type="button" style="display:none;" title="Copy a URL formatted for changedetection.io">Copy ChangeDetection link</button>
+                <div class="actionRow">
+                  <a id="lnkProduct" class="actionBtn" href="#" target="_blank" rel="noopener" style="display:none;">
+                    <svg class="icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M8 5h-2.2A1.8 1.8 0 0 0 4 6.8v7.4A1.8 1.8 0 0 0 5.8 16H13.2A1.8 1.8 0 0 0 15 14.2V12" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"/>
+                      <path d="M11 4h5v5" stroke="rgba(6,182,212,.95)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M16 4l-7 7" stroke="rgba(6,182,212,.95)" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                    Open product page
+                  </a>
+                  <button class="actionBtn" id="btnCopyCd" type="button" style="display:none;" title="Copy a URL formatted for changedetection.io">
+                    <svg class="icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M8 7h-1.2A2.8 2.8 0 0 0 4 9.8v3.4A2.8 2.8 0 0 0 6.8 16h3.4A2.8 2.8 0 0 0 13 13.2V12" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"/>
+                      <path d="M12 8h1.2A2.8 2.8 0 0 1 16 10.8v3.4A2.8 2.8 0 0 1 13.2 17H9.8A2.8 2.8 0 0 1 7 14.2V13" stroke="rgba(124,58,237,.95)" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                    Copy ChangeDetection URL
+                  </button>
                 </div>
               </div>
 
               <div id="tabDebug" style="display:none;">
                 <div class="row" style="margin:10px 0 8px; gap:10px; flex-wrap:wrap;">
-                  <button class="btn secondary" id="btnCopyApi" type="button" title="Copy the /api/lookup URL to clipboard">Copy API link</button>
+                  <button class="actionBtn" id="btnCopyApi" type="button" title="Copy the /api/lookup URL to clipboard">Copy API link</button>
                 </div>
                 <pre id="debug">—</pre>
               </div>
             </div>
           </div>
-
-          <div class="footer">
-            Tip: This page calls <span class="mono">/api/lookup</span> on this same server. That endpoint proxies IKEA requests server-side, so it works from any browser.
-          </div>
-        </div>
+</div>
       </div>
 
     </div>
   </div>
 
   
+
+<div class="modalOverlay" id="imgModal" style="display:none;">
+  <div class="imgModalCard" role="dialog" aria-modal="true" aria-labelledby="imgModalTitle">
+    <div class="imgModalTop">
+      <div>
+        <div class="imgModalTitle" id="imgModalTitle">Product image</div>
+        <div class="hint" id="imgModalMeta">—</div>
+      </div>
+      <button class="actionBtn" id="btnImgClose" type="button" title="Close">
+        <svg class="icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M6 6l8 8" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M14 6l-8 8" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        Close
+      </button>
+    </div>
+    <div class="imgModalBody">
+      <img id="imgModalImg" class="imgModalImg" alt="Product image" />
+      <div class="imgModalNavRow" id="imgModalNav" style="display:none;">
+        <button class="actionBtn" id="btnImgPrev" type="button">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12.5 5l-5 5 5 5" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Prev
+        </button>
+        <button class="actionBtn" id="btnImgNext" type="button">
+          Next
+          <svg class="icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M7.5 5l5 5-5 5" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modalOverlay" id="reasonModal" style="display:none;">
   <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="reasonTitle">
     <div class="modalHeader">
@@ -493,7 +668,7 @@
         <div class="modalKicker">Reason code</div>
         <div class="modalTitle" id="reasonTitle">—</div>
       </div>
-      <button class="btn secondary" id="btnReasonClose" type="button" title="Close">Close</button>
+      <button class="actionBtn" id="btnReasonClose" type="button" title="Close">Close</button>
     </div>
     <div class="modalContent">
       <div class="modalSection" id="reasonExplain">—</div>
@@ -527,6 +702,34 @@
       t.style.display = "block";
       clearTimeout(window.__toastTimer);
       window.__toastTimer = setTimeout(() => (t.style.display="none"), 1200);
+    }
+
+    async function copyTextToClipboard(text) {
+      if (!text) return false;
+      // Modern clipboard API (requires secure context)
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch {}
+      // Fallback for http / older browsers
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-1000px';
+        ta.style.top = '-1000px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
     }
 
     function normalizeArticle(input) {
@@ -592,20 +795,99 @@
       el.style.display = "none";
     }
 
+    // Image carousel state
+    const IMG_STATE = { urls: [], index: 0 };
 
-    function setImage(url) {
+    function setImages(urls) {
+      IMG_STATE.urls = Array.isArray(urls) ? urls.filter(Boolean) : [];
+      IMG_STATE.index = 0;
+      renderImage();
+    }
+
+    function renderImage() {
       const box = $("imgBox");
       box.innerHTML = "";
-      if (!url) {
+      const urls = IMG_STATE.urls;
+      if (!urls.length) {
         box.innerHTML = '<span style="color:rgba(255,255,255,.4); font-size:12px;">No image</span>';
         return;
       }
+
+      const wrap = document.createElement('div');
+      wrap.className = 'imgWrap';
+
       const img = new Image();
-      img.src = url;
-      img.alt = "Product image";
-      img.loading = "lazy";
-      img.referrerPolicy = "no-referrer";
-      box.appendChild(img);
+      img.src = urls[IMG_STATE.index];
+      img.alt = 'Product image';
+      img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer';
+      wrap.appendChild(img);
+
+      // Arrows if multiple images
+      if (urls.length > 1) {
+        const left = document.createElement('button');
+        left.type = 'button';
+        left.className = 'imgNav left';
+        left.innerHTML = '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12.5 5l-5 5 5 5" stroke="rgba(255,255,255,.92)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        left.addEventListener('click', (e) => {
+          e.stopPropagation();
+          IMG_STATE.index = (IMG_STATE.index - 1 + urls.length) % urls.length;
+          renderImage();
+        });
+
+        const right = document.createElement('button');
+        right.type = 'button';
+        right.className = 'imgNav right';
+        right.innerHTML = '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 5l5 5-5 5" stroke="rgba(255,255,255,.92)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        right.addEventListener('click', (e) => {
+          e.stopPropagation();
+          IMG_STATE.index = (IMG_STATE.index + 1) % urls.length;
+          renderImage();
+        });
+
+        const counter = document.createElement('div');
+        counter.className = 'imgCounter';
+        counter.textContent = `${IMG_STATE.index + 1}/${urls.length}`;
+
+        wrap.appendChild(left);
+        wrap.appendChild(right);
+        wrap.appendChild(counter);
+      }
+
+      wrap.addEventListener('click', () => openImageModal());
+      box.appendChild(wrap);
+    }
+
+    function openImageModal() {
+      const urls = IMG_STATE.urls;
+      if (!urls.length) return;
+      $("imgModalImg").src = urls[IMG_STATE.index];
+      $("imgModalImg").referrerPolicy = 'no-referrer';
+      $("imgModalMeta").textContent = urls.length > 1 ? `Image ${IMG_STATE.index + 1} of ${urls.length}` : 'Image 1 of 1';
+      $("imgModalNav").style.display = urls.length > 1 ? 'flex' : 'none';
+      $("imgModal").style.display = 'flex';
+    }
+
+    function closeImageModal() {
+      $("imgModal").style.display = 'none';
+    }
+
+    function imagePrev() {
+      const urls = IMG_STATE.urls;
+      if (urls.length < 2) return;
+      IMG_STATE.index = (IMG_STATE.index - 1 + urls.length) % urls.length;
+      $("imgModalImg").src = urls[IMG_STATE.index];
+      $("imgModalMeta").textContent = `Image ${IMG_STATE.index + 1} of ${urls.length}`;
+      renderImage();
+    }
+
+    function imageNext() {
+      const urls = IMG_STATE.urls;
+      if (urls.length < 2) return;
+      IMG_STATE.index = (IMG_STATE.index + 1) % urls.length;
+      $("imgModalImg").src = urls[IMG_STATE.index];
+      $("imgModalMeta").textContent = `Image ${IMG_STATE.index + 1} of ${urls.length}`;
+      renderImage();
     }
 
     function setStockPill(el, label, status) {
@@ -720,12 +1002,6 @@ function updateReasonCard(cia) {
   });
 
   body.appendChild(wrap);
-
-  const more = document.createElement("div");
-  more.className = "hint";
-  more.style.marginTop = "8px";
-  more.textContent = "Click a reason code for details + the raw response.";
-  body.appendChild(more);
 }
 
 function updateRestockCard(cashCarry) {
@@ -927,6 +1203,8 @@ function updateAvailability(data) {
 
     async function loadStoreHours() {
       const box = $("storeHoursBox");
+      const meta = $("storeHoursMeta");
+      const body = $("storeHoursBody");
       const s = getSelectedStore();
       if (!s.slug) {
         box.style.display = "none";
@@ -944,9 +1222,17 @@ function updateAvailability(data) {
           return;
         }
 
-        const lines = hours.map(h => `<div><b>${h.days}</b>: ${h.hours}</div>`).join("");
-        const link = j?.url ? `<div style="margin-top:6px;"><a href="${j.url}" target="_blank" rel="noopener" class="mono" style="color:inherit; text-decoration:underline;">View store page</a></div>` : "";
-        box.innerHTML = `<b>Store hours (selected store):</b> ${lines}${link}`;
+        meta.textContent = `${s.name || s.slug} (${s.id})`;
+
+        const rows = hours.map(h => {
+          const day = h.days || "—";
+          const hr = h.hours || "—";
+          return `<tr><td>${day}</td><td>${hr}</td></tr>`;
+        }).join("");
+
+        const table = `<table class="hoursTable"><tbody>${rows}</tbody></table>`;
+        const link = j?.url ? `<a class="hoursLink" href="${j.url}" target="_blank" rel="noopener">View store page</a>` : "";
+        body.innerHTML = table + link;
         box.style.display = "block";
       } catch {
         box.style.display = "none";
@@ -1003,7 +1289,7 @@ function updateAvailability(data) {
         // Product details
         $("prodTitle").textContent = data?.product?.title ?? "—";
         $("prodDesc").textContent = data?.product?.description ?? "—";
-        setImage(data?.product?.imageUrl ?? null);
+        setImages(data?.product?.imageUrls ?? (data?.product?.imageUrl ? [data.product.imageUrl] : []));
 
         // Prices
         const storeRaw = data?.prices?.store?.raw ?? null;
@@ -1071,12 +1357,8 @@ function updateAvailability(data) {
       const articleDigits = normalizeArticle($("article").value);
       if (!articleDigits) return toast("Enter article first");
       const apiUrl = `${location.origin}/api/lookup?article=${articleDigits}&store=${store}&market=${market}&lang=${lang}`;
-      try {
-        await navigator.clipboard.writeText(apiUrl);
-        toast("API link copied");
-      } catch {
-        toast("Clipboard blocked");
-      }
+      const ok = await copyTextToClipboard(apiUrl);
+      toast(ok ? "API link copied" : "Copy failed");
     }
 
     async function copyChangedetectionLink() {
@@ -1085,12 +1367,8 @@ function updateAvailability(data) {
       const articleDigits = normalizeArticle($("article").value);
       if (!articleDigits) return toast("Enter article first");
       const cdUrl = `${location.origin}/${store}/${articleDigits}`;
-      try {
-        await navigator.clipboard.writeText(cdUrl);
-        toast("ChangeDetection link copied");
-      } catch {
-        toast("Clipboard blocked");
-      }
+      const ok = await copyTextToClipboard(cdUrl);
+      toast(ok ? "ChangeDetection URL copied" : "Copy failed");
     }
 
     $("tabBtnResults").addEventListener("click", () => setTab("results"));
@@ -1099,6 +1377,12 @@ function updateAvailability(data) {
     $("btnLookup").addEventListener("click", lookup);
     $("btnCopyApi").addEventListener("click", copyApiLink);
     $("btnCopyCd").addEventListener("click", copyChangedetectionLink);
+
+    // Image modal wiring
+    $("btnImgClose").addEventListener("click", closeImageModal);
+    $("imgModal").addEventListener("click", (e) => { if (e.target && e.target.id === "imgModal") closeImageModal(); });
+    $("btnImgPrev").addEventListener("click", imagePrev);
+    $("btnImgNext").addEventListener("click", imageNext);
 
     $("article").addEventListener("keydown", (e) => { if (e.key === "Enter") lookup(); });
     $("productUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") lookup(); });
@@ -1115,7 +1399,12 @@ function updateAvailability(data) {
       if (e.target && e.target.id === "reasonModal") closeReasonModal();
     });
     window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && $("reasonModal").style.display !== "none") closeReasonModal();
+      if (e.key === "Escape") {
+        if ($("reasonModal").style.display !== "none") closeReasonModal();
+        if ($("imgModal").style.display !== "none") closeImageModal();
+      }
+      if (e.key === "ArrowLeft" && $("imgModal").style.display !== "none") imagePrev();
+      if (e.key === "ArrowRight" && $("imgModal").style.display !== "none") imageNext();
     });
 
     setTab("results");
