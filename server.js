@@ -1,5 +1,7 @@
 import express from "express";
 import { createRequire } from "module";
+import fs from "fs";
+import path from "path";
 
 // Optional: used to source the official store list (400+ stores worldwide)
 // We only use it for Australia dropdown options.
@@ -18,6 +20,19 @@ const DEFAULT_STORE = String(process.env.DEFAULT_STORE || "556");
 
 // Ingka API client-id used by ikea-availability-checker (can be overridden)
 const INGKA_CLIENT_ID = String(process.env.INGKA_CLIENT_ID || "da465052-7912-43b2-82fa-9dc39cdccef8");
+
+// ---- Changedetection.io anti-spam controls (for /:store/:article) ----
+// When scan-shop is STORE_CLOSED (end-of-day or early closure), Changedetection's "Restock & Price"
+// processor can interpret missing in-store price/qty as a real change.
+//
+// Strategy:
+//  - "freeze" (default): serve last-known-good in-store price/qty from disk, so content stays stable.
+//  - "503" or "404": return a non-2xx when store is closed so CD won't process content.
+//
+// If "freeze" is enabled but there's no snapshot yet, we fall back to 503 to avoid false alerts.
+const DATA_DIR = String(process.env.DATA_DIR || "/app/data");
+const CD_STORE_CLOSED_BEHAVIOR = String(process.env.CD_STORE_CLOSED_BEHAVIOR || "freeze").toLowerCase(); // freeze|503|404
+const CD_STALE_MAX_AGE_MS = Number(process.env.CD_STALE_MAX_AGE_MS || 7 * 24 * 60 * 60 * 1000); // 7 days
 
 
 // ---- Simple in-memory TTL cache (reduces hammering IKEA endpoints) ----
@@ -40,6 +55,47 @@ function cacheSet(key, value, ttlMs = CACHE_TTL_MS) {
   if (cache.size > 500) {
     const firstKey = cache.keys().next().value;
     if (firstKey) cache.delete(firstKey);
+  }
+}
+
+// ---- Persistent "last known good" snapshots for CD route ----
+function safeMkdirp(dir) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    // ignore
+  }
+}
+
+safeMkdirp(DATA_DIR);
+const SNAP_DIR = path.join(DATA_DIR, "lastgood");
+safeMkdirp(SNAP_DIR);
+
+function snapFile({ market, lang, store, article }) {
+  const key = `${market}_${lang}_${store}_${article}`.replace(/[^a-z0-9_]/gi, "");
+  return path.join(SNAP_DIR, `${key}.json`);
+}
+
+function readSnapshot(meta) {
+  try {
+    const p = snapFile(meta);
+    if (!fs.existsSync(p)) return null;
+    const obj = JSON.parse(fs.readFileSync(p, "utf8"));
+    if (!obj || typeof obj !== "object") return null;
+    const ts = typeof obj.ts === "number" ? obj.ts : null;
+    if (ts && Date.now() - ts > CD_STALE_MAX_AGE_MS) return null;
+    return obj;
+  } catch {
+    return null;
+  }
+}
+
+function writeSnapshot(meta, snapshot) {
+  try {
+    const p = snapFile(meta);
+    fs.writeFileSync(p, JSON.stringify({ ...snapshot, ts: Date.now() }), "utf8");
+  } catch {
+    // ignore
   }
 }
 
@@ -810,18 +866,74 @@ app.get("/api/lookup", async (req, res) => {
   }
 });
 
-async function renderChangedetectionPage(req, res, { store, article }) {
+// Build data for the Changedetection page with anti-spam behaviour on STORE_CLOSED
+async function getChangedetectionData(req, { store, article }) {
   const market = String(req.query.market || "au").toLowerCase();
   const lang = String(req.query.lang || "en").toLowerCase();
 
+  const meta = { market, lang, store: String(store), article: String(article) };
+
+  // lookupMerged already treats scan-shop STORE_CLOSED as non-fatal.
   const data = await lookupMerged({ article, store, market, lang });
+
+  const storePriceRaw = data?.prices?.store?.raw ?? null;
+  const qty = data?.stock?.qty ?? null;
+  const closedOrMissing = Boolean(data?.storeClosed) || storePriceRaw === null || storePriceRaw === undefined;
+
+  // If we have valid in-store data, persist it as the last-known-good snapshot.
+  if (!closedOrMissing && Number.isFinite(Number(storePriceRaw))) {
+    writeSnapshot(meta, {
+      prices: { store: { raw: storePriceRaw, text: data?.prices?.store?.text ?? null } },
+      stock: {
+        qty: typeof qty === "number" ? qty : null,
+        status: data?.stock?.status ?? null,
+        descriptionText: data?.stock?.descriptionText ?? null
+      },
+      location: {
+        floor: data?.location?.floor ?? null,
+        department: data?.location?.department ?? null,
+        code: data?.location?.code ?? null
+      }
+    });
+    return { data, market, lang, closed: false, usedSnapshot: false };
+  }
+
+  // STORE_CLOSED or missing store price: optionally freeze values to the last good snapshot.
+  if (CD_STORE_CLOSED_BEHAVIOR === "freeze") {
+    const snap = readSnapshot(meta);
+    if (snap) {
+      data._staleUsed = true;
+
+      // Patch store price + qty + location from snapshot so CD sees stable values.
+      if (snap?.prices?.store?.raw !== undefined) data.prices.store.raw = snap.prices.store.raw;
+      if (snap?.prices?.store?.text !== undefined) data.prices.store.text = snap.prices.store.text;
+
+      if (snap?.stock?.qty !== undefined) data.stock.qty = snap.stock.qty;
+      if (snap?.stock?.status !== undefined) data.stock.status = snap.stock.status;
+      if (snap?.stock?.descriptionText !== undefined) data.stock.descriptionText = snap.stock.descriptionText;
+
+      if (snap?.location?.floor && !data.location.floor) data.location.floor = snap.location.floor;
+      if (snap?.location?.department && !data.location.department) data.location.department = snap.location.department;
+      if (snap?.location?.code && !data.location.code) data.location.code = snap.location.code;
+
+      return { data, market, lang, closed: true, usedSnapshot: true };
+    }
+  }
+
+  return { data, market, lang, closed: true, usedSnapshot: false };
+}
+
+async function renderChangedetectionPage(req, res, { store, article, dataOverride = null }) {
+  const market = String(req.query.market || "au").toLowerCase();
+  const lang = String(req.query.lang || "en").toLowerCase();
+
+  const data = dataOverride ?? (await lookupMerged({ article, store, market, lang }));
 
   const title = data?.product?.title ?? `IKEA article ${article}`;
   const desc = data?.product?.description ? ` — ${data.product.description}` : "";
   const pageTitle = `${title}${desc}`;
 
   const inStockText = (() => {
-    if (data.storeClosed) return "Store closed (End of day handling)";
     const s = data?.stock?.status ?? "";
     const d = data?.stock?.descriptionText ?? "";
     if (String(s).toUpperCase().includes("OUT")) return "No";
@@ -909,7 +1021,7 @@ async function renderChangedetectionPage(req, res, { store, article }) {
     <h1>${escapeHtml(pageTitle)}</h1>
     <p class="sub">Article ${escapeHtml(article)} • Store ${escapeHtml(store)} • Market ${escapeHtml(market.toUpperCase())} • Lang ${escapeHtml(lang)}</p>
 
-    ${data.storeClosed ? `<div class="banner">${escapeHtml(data.storeClosedMessage || ":-(" + " The store is currently closed.")}</div>` : ""}
+    
 
     <div class="grid">
       <div class="card">
@@ -950,16 +1062,27 @@ app.get("/:store([0-9]+)/:article([0-9\\.]+)", async (req, res) => {
     const store = String(req.params.store || DEFAULT_STORE);
     const article = normArticle(req.params.article);
     if (!article) return res.status(400).send("Bad Request: missing article number.");
-    await renderChangedetectionPage(req, res, { store, article });
+    const cd = await getChangedetectionData(req, { store, article });
+
+    // If the store is closed and we did not (or could not) freeze values, return a non-2xx
+    // so Changedetection's Restock/Price processor won't interpret blanks as a real change.
+    if (cd.closed && !cd.usedSnapshot) {
+      const mode = CD_STORE_CLOSED_BEHAVIOR;
+      const code = mode === "404" ? 404 : 503;
+      res.setHeader("content-type", "text/plain; charset=utf-8");
+      res.setHeader("cache-control", "no-store");
+      res.setHeader("x-ikea-store-closed", "1");
+      return res.status(code).send("STORE_CLOSED");
+    }
+
+    // Otherwise render with the (possibly frozen) data.
+    res.setHeader("cache-control", "no-store");
+    await renderChangedetectionPage(req, res, { store, article, dataOverride: cd.data });
   } catch (e) {
-    res.setHeader("content-type", "text/html; charset=utf-8");
-    const msg = e?.message || String(e);
-    res.status(200).send(`<!doctype html><html><head><meta charset="utf-8"><title>IKEA lookup error</title><link rel="icon" href="https://www.ikea.com/favicon.ico"></head><body style="font-family:system-ui;background:#0b1020;color:#fff;padding:24px;">
-      <h1 style="margin:0 0 8px;">IKEA lookup</h1>
-      <div style="padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);font-size:18px;">
-        ${escapeHtml(msg)}
-      </div>
-    </body></html>`);
+    // Non-2xx on unexpected errors keeps CD from producing "fake" price changes.
+    res.setHeader("content-type", "text/plain; charset=utf-8");
+    res.setHeader("cache-control", "no-store");
+    res.status(503).send("LOOKUP_ERROR");
   }
 });
 

@@ -256,19 +256,58 @@
       display:none;
     }
 
-      .noticeBox {
-        display: none;
+      .noticeBox{
+        display:none;
         margin-top: 12px;
         padding: 12px 14px;
-        border-radius: 12px;
-        background: rgba(255,255,255,.07);
-        border: 1px solid rgba(255,255,255,.14);
+        border-radius: 14px;
+        background: rgba(255,255,255,.06);
+        border: 1px solid rgba(255,255,255,.12);
         color: rgba(255,255,255,.92);
         font-size: 14px;
         line-height: 1.35;
+        position: relative;
+      }
+      .noticeBox.closed{
+        background: linear-gradient(135deg, rgba(253,176,34,.16), rgba(6,182,212,.06));
+        border-color: rgba(253,176,34,.32);
+        box-shadow: 0 10px 30px rgba(253,176,34,.08);
+      }
+      .noticeBox.closed::before{
+        content:"";
+        position:absolute;
+        left:12px; top:10px; bottom:10px;
+        width:3px;
+        border-radius: 6px;
+        background: linear-gradient(180deg, rgba(253,176,34,.85), rgba(249,112,102,.65));
+        opacity:.9;
+      }
+      .noticeInner{display:flex; gap:12px; align-items:flex-start;}
+      .noticeIcon{
+        width:34px; height:34px; border-radius: 12px;
+        display:flex; align-items:center; justify-content:center;
+        background: rgba(253,176,34,.12);
+        border:1px solid rgba(253,176,34,.22);
+        flex:0 0 auto;
+        margin-left: 4px; /* keeps the accent bar clear */
+      }
+      .noticeHeadline{font-weight:900; letter-spacing:-.01em;}
+      .noticeSub{margin-top:2px; color: rgba(255,255,255,.86); font-size: 13px;}
+
+      @keyframes noticeBounce {
+        0%, 85%, 100% { transform: translateY(0); }
+        88% { transform: translateY(-4px); }
+        90% { transform: translateY(0); }
+        92% { transform: translateY(-2px); }
+        94% { transform: translateY(0); }
+      }
+      .noticeBox.closed .noticeIcon{ animation: noticeBounce 8s infinite; }
+      @media (prefers-reduced-motion: reduce){
+        .noticeBox.closed .noticeIcon{ animation: none !important; }
       }
 
-    .product{display:grid; grid-template-columns: 160px 1fr; gap:14px; align-items:start; margin-top:14px;}
+
+.product{display:grid; grid-template-columns: 160px 1fr; gap:14px; align-items:start; margin-top:14px;}
     @media (max-width: 620px){ .product{grid-template-columns:1fr} }
     .imgBox{
       border-radius: 16px; overflow:hidden;
@@ -785,13 +824,43 @@
 
     function showNotice(msg) {
       const el = $("notice");
-      el.textContent = msg;
+      // This notice is currently used for the "store closed" state.
+      el.classList.add("closed");
+      el.innerHTML = "";
+
+      const inner = document.createElement("div");
+      inner.className = "noticeInner";
+
+      const icon = document.createElement("div");
+      icon.className = "noticeIcon";
+      icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M10 2.5c-4.14 0-7.5 3.36-7.5 7.5s3.36 7.5 7.5 7.5 7.5-3.36 7.5-7.5S14.14 2.5 10 2.5Z" stroke="rgba(255,255,255,.92)" stroke-width="1.6"/><path d="M10 6v4.6" stroke="rgba(255,255,255,.92)" stroke-width="1.8" stroke-linecap="round"/><path d="M10 14.4h.01" stroke="rgba(255,255,255,.92)" stroke-width="3" stroke-linecap="round"/></svg>';
+
+      const txt = document.createElement("div");
+      txt.className = "noticeText";
+
+      const head = document.createElement("div");
+      head.className = "noticeHeadline";
+      head.textContent = "Store closed";
+
+      const sub = document.createElement("div");
+      sub.className = "noticeSub";
+      const clean = stripTags(msg).replace(/^:\-\(\s*/,"").trim();
+      sub.textContent = clean || "The selected store is currently closed. In-store price/location may be unavailable.";
+
+      txt.appendChild(head);
+      txt.appendChild(sub);
+
+      inner.appendChild(icon);
+      inner.appendChild(txt);
+
+      el.appendChild(inner);
       el.style.display = "block";
     }
 
     function clearNotice() {
       const el = $("notice");
-      el.textContent = "";
+      el.classList.remove("closed");
+      el.innerHTML = "";
       el.style.display = "none";
     }
 

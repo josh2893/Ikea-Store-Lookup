@@ -30,6 +30,19 @@ docker compose up -d --build
 ## ChangeDetection
 - `GET /556/40492331` (store 556, article 40492331)
 
+### Preventing "store closed" alert spam
+If IKEA closes the store early (end-of-day handling), the `scan-shop` endpoint can return `STORE_CLOSED` and in-store
+price/qty may disappear. ChangeDetection's "Restock & Price" processor can misinterpret that as a price change.
+
+This project now supports two behaviours for the `/<STOREID>/<ARTICLEID>` endpoint:
+- **freeze** (default): serves the last-known-good in-store price/qty from disk so content stays stable.
+- **503** or **404**: returns a non-2xx when the store is closed so ChangeDetection won't process the page.
+
+Environment variables:
+- `CD_STORE_CLOSED_BEHAVIOR=freeze|503|404` (default `freeze`)
+- `DATA_DIR=/app/data` (default `/app/data`)
+- `CD_STALE_MAX_AGE_MS=...` (default 7 days)
+
 ## Notes
 - These IKEA endpoints are not an official public API contract and may change.
 - The server includes a small in-memory TTL cache to reduce repeated calls.
