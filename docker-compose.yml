@@ -5,6 +5,17 @@ services:
     ports:
       - "8088:8080"
     restart: unless-stopped
+    environment:
+      # ChangeDetection anti-spam behavior for /<STOREID>/<ARTICLEID>
+      # - freeze: keep last-known-good in-store price/qty when IKEA scan-shop reports STORE_CLOSED
+      # - 503/404: return non-2xx so ChangeDetection won't process the page during end-of-day handling
+      - CD_STORE_CLOSED_BEHAVIOR=freeze
+      # Where snapshots are stored (used by freeze mode)
+      - DATA_DIR=/app/data
     volumes:
-      - ./data:/app/data
+      # Use a named volume (Portainer/Git stacks-friendly) so snapshots survive redeploys
+      - ikea_lookup_data:/app/data
+
+volumes:
+  ikea_lookup_data:
 

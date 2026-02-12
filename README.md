@@ -21,6 +21,8 @@ This project serves a shiny web UI and a small proxy API that fetches IKEA AU da
 docker compose up -d --build
 ```
 
+This compose file creates a named volume (`ikea_lookup_data`) to persist ChangeDetection snapshots across redeploys.
+
 3) Open:
 - http://localhost:8088
 

@@ -441,10 +441,25 @@ function extractQtyFromText(text) {
 }
 
 
+// IMPORTANT: Number(null) === 0 and Number("") === 0.
+// For Changedetection (Restock & Price) we must treat null/undefined/empty as "missing",
+// otherwise store-closed/missing values look like a real drop to $0.00 and spam alerts.
 function numberFixed(n, decimals = 2) {
-  const x = Number(n);
+  if (n === null || n === undefined) return "—";
+  const s = String(n).trim();
+  if (!s) return "—";
+  // Allow numeric strings that may include commas
+  const x = Number(s.replace(/,/g, ""));
   if (!Number.isFinite(x)) return "—";
   return x.toFixed(decimals);
+}
+
+function toFiniteNumber(n) {
+  if (n === null || n === undefined) return null;
+  const s = String(n).trim();
+  if (!s) return null;
+  const x = Number(s.replace(/,/g, ""));
+  return Number.isFinite(x) ? x : null;
 }
 
 
@@ -461,11 +476,12 @@ function isStoreClosedScanShop(respInfo) {
 }
 
 function money(n) {
-  if (n === null || n === undefined || Number.isNaN(Number(n))) return "—";
+  const x = toFiniteNumber(n);
+  if (x === null) return "—";
   try {
-    return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(Number(n));
+    return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(x);
   } catch {
-    return `$${Number(n).toFixed(2)}`;
+    return `$${x.toFixed(2)}`;
   }
 }
 
@@ -877,13 +893,14 @@ async function getChangedetectionData(req, { store, article }) {
   const data = await lookupMerged({ article, store, market, lang });
 
   const storePriceRaw = data?.prices?.store?.raw ?? null;
+  const storePriceNum = toFiniteNumber(storePriceRaw);
   const qty = data?.stock?.qty ?? null;
-  const closedOrMissing = Boolean(data?.storeClosed) || storePriceRaw === null || storePriceRaw === undefined;
+  const closedOrMissing = Boolean(data?.storeClosed) || storePriceNum === null;
 
   // If we have valid in-store data, persist it as the last-known-good snapshot.
-  if (!closedOrMissing && Number.isFinite(Number(storePriceRaw))) {
+  if (!closedOrMissing && storePriceNum !== null) {
     writeSnapshot(meta, {
-      prices: { store: { raw: storePriceRaw, text: data?.prices?.store?.text ?? null } },
+      prices: { store: { raw: storePriceNum, text: data?.prices?.store?.text ?? null } },
       stock: {
         qty: typeof qty === "number" ? qty : null,
         status: data?.stock?.status ?? null,
@@ -948,9 +965,10 @@ async function renderChangedetectionPage(req, res, { store, article, dataOverrid
   })();
 
   const priceRaw = data?.prices?.store?.raw;
-  const priceText = money(priceRaw);
-  const priceNumber = numberFixed(priceRaw, 2);
-  const priceNumberMeta = priceNumber === "—" ? "" : priceNumber;
+  const priceNum = toFiniteNumber(priceRaw);
+  const priceText = money(priceNum);
+  const priceNumber = priceNum === null ? "—" : priceNum.toFixed(2);
+  const priceNumberMeta = priceNum === null ? "" : priceNumber;
   const qtyText = (data?.stock?.qty ?? "—").toString();
 
   const schemaAvailability =
@@ -968,7 +986,7 @@ async function renderChangedetectionPage(req, res, { store, article, dataOverrid
     "offers": {
       "@type": "Offer",
       "priceCurrency": "AUD",
-      "price": Number.isFinite(Number(priceRaw)) ? Number(priceRaw).toFixed(2) : undefined,
+      "price": priceNum === null ? undefined : priceNum.toFixed(2),
       "availability": schemaAvailability
     }
   };
